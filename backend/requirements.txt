@@ -6,3 +6,6 @@ google-auth-oauthlib
 unidecode
 thefuzz
 supabase
+pypdf
+python-docx
+langchain-text-splitters
