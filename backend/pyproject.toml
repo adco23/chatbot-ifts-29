@@ -17,3 +17,9 @@ quote-style = "double"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "integracion: llama a los proveedores reales; necesita claves y consume cuota",
+]
+# Las pruebas de integración quedan excluidas por defecto. Se ejecutan con
+# `pytest -m integracion`.
+addopts = "-m 'not integracion'"
