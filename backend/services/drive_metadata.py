@@ -1,5 +1,6 @@
 from pathlib import Path
 from unidecode import unidecode
+from services.message_loader import MESSAGES
 
 def extract_drive_metadata(full_path: str) -> dict:
     """
@@ -10,7 +11,9 @@ def extract_drive_metadata(full_path: str) -> dict:
     
     # Verifica que la ruta tenga al menos los 4 niveles obligatorios
     if len(parts) < 4:
-        return {"status": "ERROR", "message": f"Estructura inválida en: {full_path}"}
+        # Buscamos el mensaje en el JSON y le inyectamos la variable
+        error_msg = MESSAGES.get("drive_metadata", {}).get("invalid_structure", "Error: {path}")
+        return {"status": "ERROR", "message": error_msg.format(path=full_path)}
     
     # Extrae contando desde el final (índices negativos)
     filename = parts[-1]

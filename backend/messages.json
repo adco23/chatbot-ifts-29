@@ -1,0 +1,10 @@
+{
+  "drive_metadata": {
+    "invalid_structure": "Estructura inválida en: {path}"
+  },
+  "text_extractor": {
+    "file_not_found": "ERROR: El archivo no existe en {path}",
+    "unsupported_format": "ERROR: Formato no soportado ({ext}).",
+    "processing_error": "ERROR al procesar el archivo: {error}"
+  }
+}

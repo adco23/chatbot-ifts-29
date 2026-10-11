@@ -25,8 +25,8 @@ def split_text_into_chunks(text: str, document_title: str, section_name: str = "
         doc = Document(
             page_content=chunk,
             metadata={
-                "titulo": document_title,
-                "seccion": section_name
+                "title": document_title,
+                "section": section_name
             }
         )
         document_chunks.append(doc)
