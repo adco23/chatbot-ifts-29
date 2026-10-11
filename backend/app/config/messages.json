@@ -1,0 +1,18 @@
+{
+  "drive_metadata": {
+    "invalid_structure": "Estructura inválida en: {path}"
+  },
+  "text_extractor": {
+    "file_not_found": "ERROR: El archivo no existe en {path}",
+    "unsupported_format": "ERROR: Formato no soportado ({ext}).",
+    "processing_error": "ERROR al procesar el archivo: {error}"
+  },
+  "document_indexer": {
+    "invalid_status": "Error: Estado '{status}' no reconocido.",
+    "status_updated": "[BD Simulación] Documento '{file_id}' actualizado al estado: {status}",
+    "no_new_chunks": "[BD Simulación] No hay fragmentos nuevos para indexar en '{file_id}'.",
+    "deleting_old_chunks": "[BD Simulación] Eliminando fragmentos anteriores del documento '{file_id}'...",
+    "inserting_new_chunks": "[BD Simulación] Insertando {count} fragmentos nuevos para '{file_id}'...",
+    "document_removed": "[BD Simulación] Documento '{file_id}' y sus fragmentos eliminados por completo (vencido/borrado)."
+  }
+}
