@@ -1,18 +1,18 @@
+import time
 import hashlib
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
 
-# Ajustá esta ruta dependiendo de dónde hayas guardado message_loader.py y messages.json
+# Ajustá esta ruta dependiendo de dónde hayas guardado message_loader.py
 from app.config.message_loader import MESSAGES
 
-# Inicializamos el modelo de embeddings a nivel módulo
-embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+# Importamos la función delegada al proveedor correspondiente (Gemini o HuggingFace)
+from app.providers.embeddings import generate_embeddings
+
+# NOTA: text_splitter se asume importado acá o en un módulo auxiliar de utilidades si tu equipo lo prefiere.
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
 
 def generate_file_hash(file_path: str) -> str:
-    """
-    Calcula la huella SHA-256 de un archivo para detectar si hubo cambios en su contenido.
-    """
+    """Calcula la huella SHA-256 de un archivo para detectar si hubo cambios."""
     sha256_hash = hashlib.sha256()
     try:
         with open(file_path, "rb") as file_bytes:
@@ -23,10 +23,7 @@ def generate_file_hash(file_path: str) -> str:
         return ""
 
 def detect_file_status(file_path: str, current_hash: str, mock_db: dict) -> str:
-    """
-    Compara el hash actual con el guardado en la base de datos para determinar
-    el estado del archivo ("new", "modified" o "unchanged").
-    """
+    """Determina el estado del archivo comparando el hash actual con el guardado."""
     if file_path not in mock_db:
         return "new"
     
@@ -37,10 +34,7 @@ def detect_file_status(file_path: str, current_hash: str, mock_db: dict) -> str:
     return "modified"
 
 def split_text_into_chunks(text: str, document_title: str, section_name: str) -> list[Document]:
-    """
-    Divide el texto en fragmentos (chunks) inyectando los metadatos relevantes
-    para no perder el contexto (título y sección).
-    """
+    """Divide el texto inyectando metadatos (título y sección)."""
     if not text.strip():
         return []
 
@@ -63,66 +57,86 @@ def split_text_into_chunks(text: str, document_title: str, section_name: str) ->
         
     return documents
 
-def generate_embeddings(chunks: list[Document]) -> list[dict]:
-    """
-    Genera los vectores (embeddings) para una lista de fragmentos.
-    Devuelve diccionarios listos para ser guardados en la base de datos.
-    """
-    if not chunks:
-        return []
-
-    embedded_chunks = []
-    texts = [chunk.page_content for chunk in chunks]
-    vectors = embedding_model.embed_documents(texts)
-    
-    for i, chunk in enumerate(chunks):
-        embedded_chunks.append({
-            "content": chunk.page_content,
-            "metadata": chunk.metadata,
-            "embedding": vectors[i]
-        })
-        
-    return embedded_chunks
-
 def update_document_status(file_id: str, status: str, db_client=None) -> bool:
-    """
-    Actualiza el estado general del documento en la base de datos.
-    """
+    """Actualiza el estado general del documento."""
     valid_statuses = ["new", "modified", "unchanged", "observed"]
     
     if status not in valid_statuses:
-        error_msg = MESSAGES.get("document_indexer", {}).get("invalid_status", "Error: {status}")
+        error_msg = MESSAGES.get("sincronizador", {}).get("invalid_status", "Error: '{status}'")
         print(error_msg.format(status=status))
         return False
         
-    # TODO: Implementar llamada real a Supabase
-    success_msg = MESSAGES.get("document_indexer", {}).get("status_updated", "Updated: {file_id}")
+    success_msg = MESSAGES.get("sincronizador", {}).get("status_updated", "Status updated: {file_id}")
     print(success_msg.format(file_id=file_id, status=status.upper()))
     return True
 
 def sync_document_chunks(file_id: str, new_chunks: list[dict], db_client=None) -> bool:
-    """
-    Reemplaza los fragmentos de un documento. 
-    Primero elimina los fragmentos viejos asociados al file_id y luego inserta los nuevos.
-    """
+    """Reemplaza los fragmentos de un documento."""
     if not new_chunks:
-        msg = MESSAGES.get("document_indexer", {}).get("no_new_chunks", "No chunks: {file_id}")
+        msg = MESSAGES.get("sincronizador", {}).get("no_new_chunks", "No chunks: {file_id}")
         print(msg.format(file_id=file_id))
         return False
         
-    del_msg = MESSAGES.get("document_indexer", {}).get("deleting_old_chunks", "Deleting: {file_id}")
+    del_msg = MESSAGES.get("sincronizador", {}).get("deleting_old_chunks", "Deleting: {file_id}")
     print(del_msg.format(file_id=file_id))
     
-    ins_msg = MESSAGES.get("document_indexer", {}).get("inserting_new_chunks", "Inserting for: {file_id}")
+    ins_msg = MESSAGES.get("sincronizador", {}).get("inserting_new_chunks", "Inserting for: {file_id}")
     print(ins_msg.format(count=len(new_chunks), file_id=file_id))
     
     return True
 
 def remove_expired_document(file_id: str, db_client=None) -> bool:
-    """
-    Elimina por completo un documento y todos sus fragmentos en cascada
-    si se detecta que fue borrado del Drive o ya está vencido.
-    """
-    msg = MESSAGES.get("document_indexer", {}).get("document_removed", "Removed: {file_id}")
+    """Elimina por completo un documento y sus fragmentos."""
+    msg = MESSAGES.get("sincronizador", {}).get("document_removed", "Removed: {file_id}")
     print(msg.format(file_id=file_id))
     return True
+
+def run_full_sync(mock_db_drive: dict) -> dict:
+    """
+    T28 y T29: Orquesta el proceso completo de sincronización.
+    Mide el tiempo (Spike vs límite Serverless) y registra resultados y errores.
+    """
+    start_time = time.time()
+    procesados = 0
+    errores = 0
+    
+    print("Iniciando ciclo de sincronización (Spike T29)...")
+    
+    try:
+        # Simulamos que procesamos los archivos leídos de Drive:
+        for file_path, current_hash in mock_db_drive.items():
+            
+            # 1. Chequeamos estado
+            status = detect_file_status(file_path, current_hash, mock_db=mock_db_drive)
+            update_document_status(file_path, status)
+            
+            if status in ["new", "modified"]:
+                # 2. Simulamos extracción y chunking
+                chunks = split_text_into_chunks(f"Texto simulado de {file_path}", file_path, "General")
+                
+                # 3. Generamos vectores (delegando a providers)
+                embedded_chunks = generate_embeddings(chunks)
+                
+                # 4. Guardamos en BD
+                sync_document_chunks(file_path, embedded_chunks)
+                procesados += 1
+                
+        # T28: Registrar éxito final
+        msg_exito = MESSAGES.get("sincronizador", {}).get("sync_success", "Sincronización OK: {procesados} procesados.")
+        print(msg_exito.format(procesados=procesados))
+        
+    except Exception as e:
+        errores += 1
+        msg_error = MESSAGES.get("sincronizador", {}).get("unexpected_error", "Error en sincronización: {error}")
+        print(msg_error.format(error=str(e)))
+        
+    end_time = time.time()
+    elapsed = end_time - start_time
+    
+    return {
+        "status": "ok" if errores == 0 else "con_errores",
+        "procesados": procesados,
+        "errores": errores,
+        "tiempo_segundos": round(elapsed, 2),
+        "aviso_vercel": "⚠️ Cerca del límite (10s)" if elapsed > 8.0 else "✅ Tiempo seguro"
+    }
