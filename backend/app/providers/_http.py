@@ -4,6 +4,10 @@ Concentra lo que es igual en todos: el cliente, el tiempo máximo total, la trad
 de las fallas de transporte y el mapeo general de códigos de estado. Cada proveedor
 aporta su URL, su cuerpo y la lectura de su respuesta.
 
+`ClienteHTTP` es el transporte, sin saber qué se le pide al proveedor. Lo comparten los
+proveedores de modelos de lenguaje (`ProveedorHTTP`, en este módulo) y los de
+embeddings (`app.providers.embeddings`).
+
 Privacidad: ningún mensaje de excepción armado acá incluye la clave, el texto de la
 solicitud ni el cuerpo de la respuesta. Las excepciones de `httpx` se descartan con
 `from None` para que tampoco viajen encadenadas.
@@ -11,7 +15,7 @@ solicitud ni el cuerpo de la respuesta. Las excepciones de `httpx` se descartan 
 
 import asyncio
 import ssl
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from typing import Any
 
 import httpx
@@ -78,8 +82,11 @@ def _es_falla_de_certificado(error: BaseException) -> bool:
     return False
 
 
-class ProveedorHTTP(ProveedorLLM):
-    """Proveedor que hace una única llamada HTTP con JSON por generación."""
+class ClienteHTTP(ABC):
+    """Hace llamadas HTTP con JSON a un proveedor y traduce sus fallas al contrato.
+
+    No sabe qué se le pide al proveedor: de eso se ocupan las subclases.
+    """
 
     def __init__(
         self,
@@ -96,6 +103,11 @@ class ProveedorHTTP(ProveedorLLM):
         self._cliente = cliente or httpx.AsyncClient(timeout=timeout_segundos)
 
     @property
+    @abstractmethod
+    def nombre(self) -> str:
+        """Identificador corto y estable del proveedor (por ejemplo, "gemini")."""
+
+    @property
     def modelo(self) -> str:
         """Modelo configurado para las solicitudes."""
         return self._modelo
@@ -109,8 +121,20 @@ class ProveedorHTTP(ProveedorLLM):
         if self._cliente_propio:
             await self._cliente.aclose()
 
-    async def generar(self, solicitud: SolicitudLLM) -> RespuestaLLM:
-        respuesta = await self._enviar(self._url(), self._encabezados(), self._cuerpo(solicitud))
+    async def _solicitar_json(
+        self,
+        url: str,
+        encabezados: dict[str, str],
+        cuerpo: dict[str, Any],
+        timeout_segundos: float | None = None,
+    ) -> dict[str, Any]:
+        """Hace el POST y devuelve el objeto JSON de una respuesta de éxito.
+
+        Lanza:
+            ErrorProveedor: falla de transporte, estado que no es de éxito o cuerpo que
+                no es un objeto JSON.
+        """
+        respuesta = await self._enviar(url, encabezados, cuerpo, timeout_segundos)
         if not respuesta.is_success:
             raise self._error_de_estado(respuesta)
         try:
@@ -119,22 +143,31 @@ class ProveedorHTTP(ProveedorLLM):
             raise self._error_de_estructura() from None
         if not isinstance(datos, dict):
             raise self._error_de_estructura()
-        return self._interpretar(datos)
+        return datos
 
     async def _enviar(
-        self, url: str, encabezados: dict[str, str], cuerpo: dict[str, Any]
+        self,
+        url: str,
+        encabezados: dict[str, str],
+        cuerpo: dict[str, Any],
+        timeout_segundos: float | None = None,
     ) -> httpx.Response:
-        """Hace el POST y traduce cualquier falla de transporte."""
+        """Hace el POST y traduce cualquier falla de transporte.
+
+        `timeout_segundos` reemplaza, solo para esta llamada, el tiempo máximo del
+        proveedor.
+        """
+        limite = self._timeout_segundos if timeout_segundos is None else timeout_segundos
         try:
             # El timeout de httpx se aplica por etapa (conexión, lectura, escritura);
             # asyncio.timeout garantiza además el tope total del proveedor.
-            async with asyncio.timeout(self._timeout_segundos):
+            async with asyncio.timeout(limite):
                 return await self._cliente.post(
-                    url, headers=encabezados, json=cuerpo, timeout=self._timeout_segundos
+                    url, headers=encabezados, json=cuerpo, timeout=limite
                 )
         except (TimeoutError, httpx.TimeoutException):
             raise ErrorTemporal(
-                f"El proveedor {self.nombre} no respondió en {self._timeout_segundos:g} s.",
+                f"El proveedor {self.nombre} no respondió en {limite:g} s.",
                 proveedor=self.nombre,
             ) from None
         except _ERRORES_DE_TRANSPORTE_PERMANENTES as error:
@@ -166,16 +199,26 @@ class ProveedorHTTP(ProveedorLLM):
             proveedor=self.nombre,
         )
 
+    def _error_de_estado(self, respuesta: httpx.Response) -> ErrorProveedor:
+        """Traduce una respuesta que no es de éxito. Los proveedores lo especializan."""
+        return error_por_estado(respuesta.status_code, self.nombre)
+
+
+class ProveedorHTTP(ClienteHTTP, ProveedorLLM):
+    """Proveedor que hace una única llamada HTTP con JSON por generación."""
+
+    async def generar(self, solicitud: SolicitudLLM) -> RespuestaLLM:
+        datos = await self._solicitar_json(
+            self._url(), self._encabezados(), self._cuerpo(solicitud)
+        )
+        return self._interpretar(datos)
+
     def _error_de_texto_vacio(self, motivo: object = None) -> ErrorTemporal:
         detalle = f" (motivo de fin: {motivo})" if isinstance(motivo, str) and motivo else ""
         return ErrorTemporal(
             f"El proveedor {self.nombre} devolvió una respuesta sin texto{detalle}.",
             proveedor=self.nombre,
         )
-
-    def _error_de_estado(self, respuesta: httpx.Response) -> ErrorProveedor:
-        """Traduce una respuesta que no es de éxito. Los proveedores lo especializan."""
-        return error_por_estado(respuesta.status_code, self.nombre)
 
     @abstractmethod
     def _url(self) -> str:

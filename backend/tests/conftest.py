@@ -6,6 +6,22 @@ from fastapi.testclient import TestClient
 from app.config import Configuracion, obtener_configuracion
 from app.main import app
 from app.providers.dependencias import obtener_gestor_proveedores
+from app.providers.embeddings.dependencias import obtener_gestor_embeddings
+from app.services.limite_solicitudes import obtener_contador_solicitudes
+
+# Funciones que guardan su resultado por proceso: se vacían antes y después de cada
+# prueba para que ninguna herede la configuración ni el estado de otra.
+_CON_CACHE = (
+    obtener_configuracion,
+    obtener_gestor_proveedores,
+    obtener_gestor_embeddings,
+    obtener_contador_solicitudes,
+)
+
+
+def _vaciar_caches() -> None:
+    for funcion in _CON_CACHE:
+        funcion.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -14,11 +30,9 @@ def configuracion_aislada(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     for campo in Configuracion.model_fields:
         monkeypatch.delenv(campo.upper(), raising=False)
-    obtener_configuracion.cache_clear()
-    obtener_gestor_proveedores.cache_clear()
+    _vaciar_caches()
     yield
-    obtener_configuracion.cache_clear()
-    obtener_gestor_proveedores.cache_clear()
+    _vaciar_caches()
 
 
 @pytest.fixture
