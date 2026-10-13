@@ -1,0 +1,25 @@
+name: CI AppMinds
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Copiar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Verificar archivos del proyecto
+        run: |
+          echo "Verificando estructura del backend..."
+          ls -la backend/app
+          echo "¡Estructura validada con éxito!"
