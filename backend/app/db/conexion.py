@@ -1,17 +1,27 @@
-import os
-from supabase import create_client, Client
+"""Conexión con Supabase a partir de la configuración de la aplicación."""
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+import logging
+from functools import lru_cache
 
-supabase: Client = None
+from supabase import Client, create_client
 
-if SUPABASE_URL and SUPABASE_KEY:
+from app.config import obtener_configuracion
+
+logger = logging.getLogger(__name__)
+
+
+@lru_cache
+def obtener_cliente_supabase() -> Client | None:
+    """Devuelve el cliente de Supabase, creado una sola vez por proceso.
+
+    Sin URL o sin clave configuradas devuelve None: la aplicación funciona sin base.
+    """
+    config = obtener_configuracion()
+    if config.supabase_url is None or config.supabase_key is None:
+        return None
     try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    except Exception as e:
-        print(f"Error al conectar con Supabase: {e}")
-
-def obtener_cliente_supabase() -> Client:
-    """Retorna la instancia del cliente de Supabase."""
-    return supabase
+        return create_client(config.supabase_url, config.supabase_key.get_secret_value())
+    except Exception as error:
+        # Solo el tipo de error: el mensaje podría incluir la clave.
+        logger.error("No se pudo crear el cliente de Supabase: %s", type(error).__name__)
+        return None

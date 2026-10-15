@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Configuracion, obtener_configuracion
+from app.db.conexion import obtener_cliente_supabase
 from app.main import app
 from app.providers.dependencias import obtener_gestor_proveedores
 from app.providers.embeddings.dependencias import obtener_gestor_embeddings
@@ -16,6 +17,7 @@ _CON_CACHE = (
     obtener_gestor_proveedores,
     obtener_gestor_embeddings,
     obtener_contador_solicitudes,
+    obtener_cliente_supabase,
 )
 
 

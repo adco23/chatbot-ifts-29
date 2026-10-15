@@ -1,5 +1,6 @@
 from app.db.conexion import obtener_cliente_supabase
 
+
 def obtener_materias_repo():
     """Recupera el listado oficial de materias desde Supabase (T10/T11)."""
     supabase = obtener_cliente_supabase()

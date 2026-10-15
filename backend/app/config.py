@@ -114,12 +114,20 @@ class Configuracion(BaseSettings):
     # demasiado corto, esas rutas rechazan todas las solicitudes.
     admin_api_token: SecretStr | None = None
 
+    # --- Base de datos ---
+    # URL del proyecto de Supabase (https://<id>.supabase.co) y su clave de API. Si
+    # falta alguna de las dos, la aplicación arranca sin base.
+    supabase_url: str | None = None
+    supabase_key: SecretStr | None = None
+
     @field_validator(
         "gemini_api_key",
         "groq_api_key",
         "cloudflare_account_id",
         "cloudflare_api_token",
         "admin_api_token",
+        "supabase_url",
+        "supabase_key",
         mode="before",
     )
     @classmethod
