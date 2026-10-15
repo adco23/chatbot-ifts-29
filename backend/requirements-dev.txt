@@ -1,2 +1,9 @@
+# Incluye todas las dependencias del entorno de producción
+-r requirements.txt
+# Herramientas para pruebas unitarias y métricas de cobertura
+pytest
+pytest-cov
+# Análisis estático y formateo de código (linter)
+ruff
 pytest==9.1.1
 ruff==0.17.0

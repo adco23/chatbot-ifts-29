@@ -1,3 +1,23 @@
+# Framework web y servidor principal
+fastapi
+uvicorn
+# Conexión y autenticación con Google Drive
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+# Utilidades para limpieza de texto y búsqueda aproximada
+unidecode
+thefuzz
+# Cliente de base de datos
+supabase
+# Extracción de contenido de documentos (PDF y Word)
+pypdf
+python-docx
+# Fragmentación de texto para procesamiento
+langchain-text-splitters
+# Generación de modelos vectoriales (embeddings)
+langchain-huggingface==0.0.3
+sentence-transformers==3.0.1
 fastapi==0.143.0
 httpx==0.28.1
 pydantic-settings==2.15.0

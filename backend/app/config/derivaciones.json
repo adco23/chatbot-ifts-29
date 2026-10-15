@@ -1,0 +1,16 @@
+[
+  {
+    "department": "Bedelía",
+    "keywords": ["inscripción", "materias", "correlativas", "certificado de alumno regular"],
+    "email": "bedelia@ifts29.edu.ar",
+    "schedule": "Lunes a Viernes de 18:30 a 21:30",
+    "contact_person": "Equipo de Bedelía"
+  },
+  {
+    "department": "Secretaría Académica",
+    "keywords": ["equivalencias", "titulo", "pase", "analítico"],
+    "email": "secretaria@ifts29.edu.ar",
+    "schedule": "Martes y Jueves de 19:00 a 21:00",
+    "contact_person": "Secretaría"
+  }
+]
