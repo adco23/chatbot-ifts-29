@@ -27,3 +27,39 @@ def registrar_consulta_anonima(texto_sanitizado: str, resultado: str, confianza:
         supabase.table("consulta").insert(data).execute()
     except Exception as e:
         print(f"Error al guardar métrica en Supabase: {e}")
+
+def guardar_documento_institucional(titulo: str, drive_id: str, vigente: bool = True, estado: str = "activo"):
+    """Inserta o registra un documento institucional sincronizado desde Drive."""
+    supabase = obtener_cliente_supabase()
+    if not supabase:
+        return None
+    try:
+        data = {
+            "titulo": titulo,
+            "drive_id": drive_id,
+            "vigente": vigente,
+            "estado": estado
+        }
+        # Forzamos el esquema public explícitamente por si PostgREST no lo resuelve por defecto
+        response = supabase.schema("public").table("documento").insert(data).execute()
+        return response.data[0] if response.data else None
+    except Exception as e:
+        print(f"Error al guardar documento en Supabase: {e}")
+        return None
+
+def guardar_fragmento_documento(documento_id: int, contenido: str, orden: int = 1):
+    """Inserta un fragmento de texto asociado a un documento."""
+    supabase = obtener_cliente_supabase()
+    if not supabase:
+        return None
+    try:
+        data = {
+            "documento_id": documento_id,
+            "contenido": contenido,
+            "orden": orden
+        }
+        response = supabase.table("fragmento").insert(data).execute()
+        return response.data[0] if response.data else None
+    except Exception as e:
+        print(f"Error al guardar fragmento en Supabase: {e}")
+        return None
