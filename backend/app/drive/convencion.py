@@ -1,6 +1,6 @@
 from pathlib import Path
 from unidecode import unidecode
-from services.message_loader import MESSAGES
+from app.config.message_loader import MESSAGES
 
 def extract_drive_metadata(full_path: str) -> dict:
     """

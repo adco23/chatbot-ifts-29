@@ -1,7 +1,7 @@
 from pathlib import Path
 from pypdf import PdfReader
 from docx import Document
-from services.message_loader import MESSAGES
+from app.config.message_loader import MESSAGES
 
 def extract_text(file_path: str) -> list[dict]:
     """

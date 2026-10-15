@@ -8,18 +8,18 @@
     "processing_error": "ERROR al procesar el archivo: {error}"
   },
   "sincronizador": {
-    "sync_success": "✅ Sincronización completada: {procesados} documentos procesados.",
-    "unexpected_error": "❌ Error inesperado en la sincronización: {error}",
-    "invalid_status": "⚠️ Error: Estado de documento '{status}' no reconocido.",
-    "status_updated": "🔄 [BD Simulación] Documento '{file_id}' actualizado al estado: {status}",
-    "no_new_chunks": "ℹ️ [BD Simulación] No hay fragmentos nuevos para indexar en '{file_id}'.",
-    "deleting_old_chunks": "🗑️ [BD Simulación] Eliminando fragmentos anteriores del documento '{file_id}'...",
-    "inserting_new_chunks": "📥 [BD Simulación] Insertando {count} fragmentos nuevos para '{file_id}'...",
-    "document_removed": "🚫 [BD Simulación] Documento '{file_id}' y sus fragmentos eliminados por completo (vencido/borrado)."
+    "sync_success": "Sincronización completada: {procesados} documentos procesados.",
+    "unexpected_error": "Error inesperado en la sincronización: {error}",
+    "invalid_status": "Error: Estado de documento '{status}' no reconocido.",
+    "status_updated": "[BD Simulación] Documento '{file_id}' actualizado al estado: {status}",
+    "no_new_chunks": "[BD Simulación] No hay fragmentos nuevos para indexar en '{file_id}'.",
+    "deleting_old_chunks": "[BD Simulación] Eliminando fragmentos anteriores del documento '{file_id}'...",
+    "inserting_new_chunks": "[BD Simulación] Insertando {count} fragmentos nuevos para '{file_id}'...",
+    "document_removed": "[BD Simulación] Documento '{file_id}' y sus fragmentos eliminados por completo (vencido/borrado)."
   },
   "derivacion": {
-    "file_not_found": "⚠️ Advertencia: No se encontró el archivo de derivaciones en la ruta especificada.",
-    "json_decode_error": "❌ Error al decodificar el JSON de derivaciones:",
-    "unexpected_error": "❌ Error inesperado al leer las derivaciones:"
+    "file_not_found": "Advertencia: No se encontró el archivo de derivaciones en la ruta especificada.",
+    "json_decode_error": "Error al decodificar el JSON de derivaciones:",
+    "unexpected_error": "Error inesperado al leer las derivaciones:"
   }
 }
