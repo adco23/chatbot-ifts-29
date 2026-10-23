@@ -1,63 +1,145 @@
+"""Lectura de documentos de Drive; no contiene operaciones de escritura remota."""
+
 import os
-import json
-from googleapiclient.discovery import build
-from google.oauth2 import service_account
+from contextlib import contextmanager
 from io import BytesIO
+
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
-# Scopes estrictamente en modo solo lectura
-SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
-CREDENTIALS_FILE = 'credentials.json'
+SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+CREDENTIALS_FILE = "credentials.json"
+TIPO_GOOGLE_DOCS = "application/vnd.google-apps.document"
+TIPO_PDF = "application/pdf"
+_CAMPOS_ARCHIVO = "id,name,mimeType,webViewLink"
+
+
+class ErrorDrive(RuntimeError):
+    """Falla de lectura cuyo mensaje no expone credenciales ni contenido remoto."""
+
 
 def conectar_drive():
-    """Conecta con la API de Google Drive usando la cuenta de servicio."""
+    """Conecta con Drive mediante la cuenta de servicio y permisos de solo lectura."""
     try:
         if os.path.exists(CREDENTIALS_FILE):
-            creds = service_account.Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
-            return build('drive', 'v3', credentials=creds)
+            credenciales = service_account.Credentials.from_service_account_file(
+                CREDENTIALS_FILE, scopes=SCOPES
+            )
+            return build("drive", "v3", credentials=credenciales)
         return None
-    except Exception as e:
-        print(f"Error al conectar con Google Drive: {e}")
+    except Exception:
+        print("No se pudo conectar con Google Drive.")
         return None
 
-def listar_archivos_institucionales():
-    """Lista los archivos de la carpeta institucional configurada."""
-    service = conectar_drive()
-    if not service:
-        return []
-    
+
+@contextmanager
+def _usar_servicio(servicio=None):
+    propio = servicio is None
+    cliente = conectar_drive() if propio else servicio
+    if cliente is None:
+        raise ErrorDrive("No se pudo conectar con Google Drive.")
     try:
-        # ID de la carpeta institucional compartida
-        folder_id = os.environ.get("GOOGLE_DRIVE_FOLDER_ID", "11kZr6lwqHUzofr37mTd-noucxwunmIr8")
-        query = f"'{folder_id}' in parents and trashed=false"
-        results = service.files().list(
-            q=query, 
-            pageSize=50, 
-            fields="files(id, name, mimeType, webViewLink)"
-        ).execute()
-        
-        return results.get('files', [])
-    except Exception as e:
-        print(f"Error al listar archivos: {e}")
+        yield cliente
+    finally:
+        cerrar = getattr(cliente, "close", None)
+        if propio and callable(cerrar):
+            try:
+                cerrar()
+            except Exception:
+                # Una falla al cerrar no debe ocultar el resultado de la lectura.
+                print("No se pudo cerrar el cliente de Google Drive.")
+
+
+def listar_archivos_institucionales(*, servicio=None, estricto: bool = False) -> list[dict]:
+    """Lista todas las páginas de hijos directos de la carpeta configurada.
+
+    El modo legado devuelve ``[]`` ante una falla. El flujo de indexación usa
+    ``estricto=True`` para distinguir una carpeta vacía de un error de lectura.
+    """
+    try:
+        with _usar_servicio(servicio) as cliente:
+            carpeta = os.environ.get(
+                "GOOGLE_DRIVE_FOLDER_ID", "11kZr6lwqHUzofr37mTd-noucxwunmIr8"
+            )
+            carpeta = carpeta.replace("\\", "\\\\").replace("'", "\\'")
+            consulta = f"'{carpeta}' in parents and trashed=false"
+            archivos = []
+            pagina = None
+            paginas_vistas = set()
+            while True:
+                parametros = {
+                    "q": consulta,
+                    "pageSize": 50,
+                    "fields": f"nextPageToken,files({_CAMPOS_ARCHIVO})",
+                }
+                if pagina is not None:
+                    parametros["pageToken"] = pagina
+                resultado = cliente.files().list(**parametros).execute()
+                elementos = resultado.get("files", [])
+                if not isinstance(elementos, list) or not all(
+                    isinstance(elemento, dict) for elemento in elementos
+                ):
+                    raise ErrorDrive("La respuesta de Google Drive no es válida.")
+                archivos.extend(elementos)
+                pagina = resultado.get("nextPageToken")
+                if not pagina:
+                    return archivos
+                if not isinstance(pagina, str) or pagina in paginas_vistas:
+                    raise ErrorDrive("La paginación de Google Drive no es válida.")
+                paginas_vistas.add(pagina)
+    except Exception:
+        mensaje = "No se pudieron listar los archivos de Google Drive."
+        if estricto:
+            raise ErrorDrive(mensaje) from None
+        print(mensaje)
         return []
 
 
-def descargar_contenido_archivo(file_id):
-    """Descarga el contenido binario de un archivo de Drive dado su ID."""
-    service = conectar_drive()
-    if not service:
-        return None
-    
+def obtener_metadatos_archivo(drive_id: str, *, servicio=None) -> dict:
+    """Obtiene un archivo por ID; siempre informa las fallas mediante ErrorDrive."""
     try:
-        request = service.files().get_media(fileId=file_id)
-        fh = BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done:
-            status, done = downloader.next_chunk()
-        
-        fh.seek(0)
-        return fh.read()
-    except Exception as e:
-        print(f"Error al descargar el archivo con ID {file_id}: {e}")
+        if not isinstance(drive_id, str) or not drive_id.strip():
+            raise ErrorDrive("El identificador del documento no es válido.")
+        with _usar_servicio(servicio) as cliente:
+            archivo = cliente.files().get(
+                fileId=drive_id, fields=_CAMPOS_ARCHIVO
+            ).execute()
+            if not isinstance(archivo, dict) or not all(
+                isinstance(archivo.get(campo), str) and archivo[campo].strip()
+                for campo in ("id", "name", "mimeType")
+            ):
+                raise ErrorDrive("Los metadatos del documento no son válidos.")
+            return archivo
+    except Exception:
+        raise ErrorDrive("No se pudieron obtener los metadatos del documento de Drive.") from None
+
+
+def descargar_contenido_archivo(
+    file_id,
+    *,
+    tipo_mime: str | None = None,
+    servicio=None,
+    estricto: bool = False,
+) -> bytes | None:
+    """Descarga bytes o exporta Google Docs a PDF, íntegramente en memoria."""
+    try:
+        if not isinstance(file_id, str) or not file_id.strip():
+            raise ErrorDrive("El identificador del documento no es válido.")
+        with _usar_servicio(servicio) as cliente:
+            if tipo_mime == TIPO_GOOGLE_DOCS:
+                solicitud = cliente.files().export_media(fileId=file_id, mimeType=TIPO_PDF)
+            else:
+                solicitud = cliente.files().get_media(fileId=file_id)
+            with BytesIO() as contenido:
+                descarga = MediaIoBaseDownload(contenido, solicitud)
+                terminado = False
+                while not terminado:
+                    _, terminado = descarga.next_chunk()
+                return contenido.getvalue()
+    except Exception:
+        mensaje = "No se pudo descargar el documento de Google Drive."
+        if estricto:
+            raise ErrorDrive(mensaje) from None
+        print(mensaje)
         return None

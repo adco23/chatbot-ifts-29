@@ -5,7 +5,6 @@ from fastapi.testclient import TestClient
 
 from app.settings import Configuracion, obtener_configuracion
 from app.db.conexion import obtener_cliente_supabase
-from app.main import app
 from app.providers.dependencias import obtener_gestor_proveedores
 from app.providers.embeddings.dependencias import obtener_gestor_embeddings
 from app.services.limite_solicitudes import obtener_contador_solicitudes
@@ -38,6 +37,9 @@ def configuracion_aislada(monkeypatch, tmp_path):
 
 
 @pytest.fixture
-def cliente() -> TestClient:
+def cliente(configuracion_aislada) -> TestClient:
     """Cliente HTTP de prueba contra la aplicación."""
+    from app.main import app
+
+    _vaciar_caches()
     return TestClient(app)

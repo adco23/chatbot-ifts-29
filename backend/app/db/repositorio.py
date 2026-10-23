@@ -1,4 +1,19 @@
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
+from typing import Any
+
+from supabase import Client
+
 from app.db.conexion import obtener_cliente_supabase
+from app.models.rag import (
+    DocumentoDrive,
+    DocumentoPersistido,
+    FiltrosRecuperacion,
+    FragmentoParaIndexar,
+    FragmentoRecuperado,
+    ResumenIndexacion,
+    validar_vector_rag,
+)
 
 
 def obtener_materias_repo():
@@ -28,7 +43,9 @@ def registrar_consulta_anonima(texto_sanitizado: str, resultado: str, confianza:
     except Exception as e:
         print(f"Error al guardar métrica en Supabase: {e}")
 
-def guardar_documento_institucional(titulo: str, drive_id: str, vigente: bool = True, estado: str = "activo"):
+def guardar_documento_institucional(
+    titulo: str, drive_id: str, vigente: bool = True, estado: str = "activo"
+):
     """Inserta o registra un documento institucional sincronizado desde Drive."""
     supabase = obtener_cliente_supabase()
     if not supabase:
@@ -72,3 +89,184 @@ def guardar_fragmento_documento(
     except Exception as e:
         print(f"Error al guardar fragmento en Supabase: {e}")
         return None
+
+
+class ErrorRepositorio(RuntimeError):
+    """Una operación RAG falló; no equivale a una búsqueda sin coincidencias."""
+
+
+def listar_materias_chat(*, cliente: Client | None = None):
+    """Catálogo estricto para resolver nombres sin fijar IDs en código."""
+    from app.models.chat import MateriaChat
+
+    base = _cliente_rag(cliente)
+    filas = _ejecutar_rag(lambda: base.table("materia").select("id,codigo,nombre").execute())
+    try:
+        return [MateriaChat.model_validate(fila) for fila in filas]
+    except Exception:
+        raise ErrorRepositorio("El catálogo de materias no es válido.") from None
+
+
+def listar_documentos_chat(*, cliente: Client | None = None) -> list[DocumentoPersistido]:
+    """Cobertura documental activa/vigente; no es un catálogo de comisiones."""
+    base = _cliente_rag(cliente)
+    filas = _ejecutar_rag(lambda: base.table("documento").select(
+        "id,titulo,drive_id,materia_id,comision,periodo,vigente,estado,indexado_en"
+    ).eq("estado", "activo").eq("vigente", True).execute())
+    try:
+        return [DocumentoPersistido.model_validate(fila) for fila in filas]
+    except Exception:
+        raise ErrorRepositorio("Los metadatos documentales no son válidos.") from None
+
+
+def _cliente_rag(cliente: Client | None) -> Client:
+    seleccionado = cliente if cliente is not None else obtener_cliente_supabase()
+    if seleccionado is None:
+        raise ErrorRepositorio("La base de datos no está disponible para RAG.")
+    return seleccionado
+
+
+def _ejecutar_rag(operacion: Callable[[], Any]) -> list[dict[str, Any]]:
+    try:
+        datos = operacion().data
+        if not isinstance(datos, list) or any(not isinstance(fila, dict) for fila in datos):
+            raise ValueError("Respuesta no tabular.")
+        return datos
+    except Exception:
+        # No copiar mensajes del cliente: pueden contener payloads o credenciales.
+        raise ErrorRepositorio("No se pudo completar la operación de datos RAG.") from None
+
+
+def obtener_documento_por_drive_id(
+    drive_id: str, *, cliente: Client | None = None
+) -> DocumentoPersistido | None:
+    if not isinstance(drive_id, str) or not drive_id.strip():
+        raise ValueError("El identificador de Drive no puede estar vacío.")
+    base = _cliente_rag(cliente)
+    filas = _ejecutar_rag(
+        lambda: (
+            base.schema("public")
+            .table("documento")
+            .select("id,titulo,drive_id,materia_id,comision,periodo,vigente,estado,indexado_en")
+            .eq("drive_id", drive_id.strip())
+            .limit(1)
+            .execute()
+        )
+    )
+    if not filas:
+        return None
+    try:
+        return DocumentoPersistido.model_validate(filas[0])
+    except Exception:
+        raise ErrorRepositorio("La respuesta de documento no respeta el contrato RAG.") from None
+
+
+def _validar_id(documento_id: int) -> None:
+    if isinstance(documento_id, bool) or not isinstance(documento_id, int) or documento_id <= 0:
+        raise ValueError("El identificador de documento debe ser un entero positivo.")
+
+
+def eliminar_fragmentos_documento(documento_id: int, *, cliente: Client | None = None) -> None:
+    """Operación aislada; la reindexación utiliza la RPC atómica en su lugar."""
+    _validar_id(documento_id)
+    base = _cliente_rag(cliente)
+    _ejecutar_rag(
+        lambda: (
+            base.schema("public")
+            .table("fragmento")
+            .delete()
+            .eq("documento_id", documento_id)
+            .execute()
+        )
+    )
+
+
+def actualizar_documento_indexado(documento_id: int, *, cliente: Client | None = None) -> None:
+    """Marca UTC sin zona, como la columna existente; no compone la reindexación."""
+    _validar_id(documento_id)
+    base = _cliente_rag(cliente)
+    instante = datetime.now(UTC).replace(tzinfo=None).isoformat()
+    filas = _ejecutar_rag(
+        lambda: (
+            base.schema("public")
+            .table("documento")
+            .update({"indexado_en": instante})
+            .eq("id", documento_id)
+            .execute()
+        )
+    )
+    if not filas:
+        raise ErrorRepositorio("No se encontró el documento para actualizar su indexación.")
+
+
+def reemplazar_fragmentos_documento(
+    documento: DocumentoDrive,
+    fragmentos: Sequence[FragmentoParaIndexar],
+    *,
+    cliente: Client | None = None,
+) -> ResumenIndexacion:
+    """Una única transacción SQL conserva el documento y sustituye todo su índice."""
+    if not isinstance(documento, DocumentoDrive):
+        raise ValueError("Se esperaba un documento de Drive tipado.")
+    lote = list(fragmentos)
+    if not lote or any(not isinstance(fragmento, FragmentoParaIndexar) for fragmento in lote):
+        raise ValueError("Se esperaba un lote no vacío de fragmentos tipados.")
+    if [fragmento.orden for fragmento in lote] != list(range(1, len(lote) + 1)):
+        raise ValueError("Los fragmentos deben tener orden consecutivo desde uno.")
+    for fragmento in lote:
+        validar_vector_rag(fragmento.vector)
+    base = _cliente_rag(cliente)
+    parametros = {
+        "p_drive_id": documento.drive_id,
+        "p_titulo": documento.titulo,
+        "p_fragmentos": [fragmento.model_dump() for fragmento in lote],
+    }
+    filas = _ejecutar_rag(
+        lambda: base.schema("public").rpc("reemplazar_fragmentos_documento", parametros).execute()
+    )
+    try:
+        if len(filas) != 1:
+            raise ValueError("Resumen no único.")
+        resumen = ResumenIndexacion.model_validate(filas[0])
+        if resumen.fragmentos_indexados != len(lote):
+            raise ValueError("Cantidad de fragmentos inconsistente.")
+        return resumen
+    except Exception:
+        raise ErrorRepositorio("La respuesta de indexación no respeta el contrato RAG.") from None
+
+
+def buscar_fragmentos_similares(
+    vector_consulta: Sequence[float],
+    *,
+    filtros: FiltrosRecuperacion | None = None,
+    top_k: int,
+    documento_ids: Sequence[int] | None = None,
+    cliente: Client | None = None,
+) -> list[FragmentoRecuperado]:
+    validar_vector_rag(vector_consulta)
+    if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k <= 0:
+        raise ValueError("Top K debe ser un entero positivo.")
+    ids = list(documento_ids) if documento_ids is not None else None
+    if ids is not None:
+        for documento_id in ids:
+            _validar_id(documento_id)
+    aplicados = filtros if filtros is not None else FiltrosRecuperacion()
+    if not isinstance(aplicados, FiltrosRecuperacion):
+        raise ValueError("Se esperaban filtros RAG tipados.")
+    base = _cliente_rag(cliente)
+    parametros = {
+        "p_query_embedding": list(vector_consulta),
+        "p_top_k": top_k,
+        "p_materia_id": aplicados.materia_id,
+        "p_comision": aplicados.comision,
+        "p_periodo": aplicados.periodo,
+        "p_vigente": aplicados.vigente,
+        "p_documento_ids": ids,
+    }
+    filas = _ejecutar_rag(
+        lambda: base.schema("public").rpc("match_fragmentos", parametros).execute()
+    )
+    try:
+        return [FragmentoRecuperado.model_validate(fila) for fila in filas]
+    except Exception:
+        raise ErrorRepositorio("La respuesta de búsqueda no respeta el contrato RAG.") from None

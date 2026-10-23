@@ -9,6 +9,10 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 NOMBRE_SERVICIO = "asistente-ifts29-api"
 
+# Contrato T12 del único índice persistido en fragmento.vector.
+MODELO_EMBEDDINGS_RAG = "gemini-embedding-001"
+DIMENSION_EMBEDDINGS_RAG = 768
+
 # Nombres válidos de proveedores de modelos de lenguaje. Coinciden con la propiedad
 # `nombre` de cada implementación de `ProveedorLLM`.
 PROVEEDORES_LLM_VALIDOS: tuple[str, ...] = ("gemini", "groq")
@@ -61,8 +65,8 @@ class Configuracion(BaseSettings):
     llm_orden_proveedores: Annotated[list[str], NoDecode] = ["gemini", "groq"]
 
     # --- Embeddings ---
-    # Doble índice: cada proveedor tiene su modelo, su dimensión y su propio índice. Los
-    # vectores de uno no sirven para buscar en el índice del otro.
+    # RAG utiliza solo Gemini/768. Cloudflare sigue disponible como infraestructura de
+    # contingencia, pero sus resultados no son compatibles con fragmento.vector.
 
     # Proveedor de embeddings que se intenta primero; el otro queda de respaldo.
     embedding_primary: str = "gemini"
@@ -70,8 +74,8 @@ class Configuracion(BaseSettings):
     # Gemini usa para los embeddings la misma clave que para el modelo de lenguaje
     # (`gemini_api_key`). Modelo y dimensión según la documentación consultada el
     # 2026-10-11; el modelo tiene baja anunciada para el 14 de mayo de 2028.
-    gemini_embedding_modelo: str = "gemini-embedding-001"
-    gemini_embedding_dimension: int = Field(default=768, gt=0)
+    gemini_embedding_modelo: str = MODELO_EMBEDDINGS_RAG
+    gemini_embedding_dimension: int = Field(default=DIMENSION_EMBEDDINGS_RAG, gt=0)
 
     # Cloudflare Workers AI por su API REST: necesita el identificador de la cuenta y
     # un token de API. Si falta alguno de los dos, el proveedor no se usa.
@@ -101,6 +105,21 @@ class Configuracion(BaseSettings):
     # Se suma al presupuesto del modelo de lenguaje: en el camino de falla, la consulta
     # puede superar los 10 segundos de RNF05.
     embedding_presupuesto_segundos: float = Field(default=4.0, gt=0, allow_inf_nan=False)
+
+    # La confianza es una heurística basada en el mejor coseno, no una probabilidad.
+    rag_top_k: int = Field(default=5, gt=0, strict=True)
+    rag_umbral_confianza: float = Field(default=0.70, ge=0, le=1, allow_inf_nan=False)
+
+    @field_validator("rag_top_k", mode="before")
+    @classmethod
+    def _leer_top_k(cls, valor: object) -> object:
+        # Las variables de entorno son texto; no aceptar decimales ni booleanos.
+        if isinstance(valor, str):
+            try:
+                return int(valor.strip())
+            except ValueError:
+                raise ValueError("RAG_TOP_K debe ser un entero positivo.") from None
+        return valor
 
     # --- Límite de solicitudes por sesión (RNF11) ---
     # Cantidad máxima de solicitudes que una sesión puede hacer dentro de la ventana, y

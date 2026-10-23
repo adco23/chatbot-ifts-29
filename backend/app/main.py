@@ -2,8 +2,8 @@
 
 from fastapi import FastAPI
 
+from app.routers import admin, chat, health
 from app.settings import obtener_configuracion
-from app.routers import health, admin
 
 
 def crear_app() -> FastAPI:
@@ -15,6 +15,7 @@ def crear_app() -> FastAPI:
     )
 
     app.include_router(health.router)
+    app.include_router(chat.router)
 
     app.include_router(admin.router, prefix="/admin")
 
