@@ -47,19 +47,28 @@ def guardar_documento_institucional(titulo: str, drive_id: str, vigente: bool = 
         print(f"Error al guardar documento en Supabase: {e}")
         return None
 
-def guardar_fragmento_documento(documento_id: int, contenido: str, orden: int = 1):
-    """Inserta un fragmento de texto asociado a un documento."""
+def guardar_fragmento_documento(
+    documento_id: int,
+    contenido: str,
+    vector: list[float] | None = None,
+    orden: int = 1,
+):
+    """Inserta un fragmento de texto asociado a un documento, con su embedding."""
     supabase = obtener_cliente_supabase()
     if not supabase:
         return None
+
     try:
         data = {
             "documento_id": documento_id,
             "contenido": contenido,
-            "orden": orden
+            "orden": orden,
+            "vector": vector,
         }
+
         response = supabase.table("fragmento").insert(data).execute()
         return response.data[0] if response.data else None
+
     except Exception as e:
         print(f"Error al guardar fragmento en Supabase: {e}")
         return None

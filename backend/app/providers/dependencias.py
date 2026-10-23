@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from app.config import Configuracion, obtener_configuracion
+from app.settings import Configuracion, obtener_configuracion
 from app.providers._http import ProveedorHTTP
 from app.providers.gemini import ProveedorGemini
 from app.providers.gestor import GestorProveedores

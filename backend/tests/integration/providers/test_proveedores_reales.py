@@ -14,7 +14,7 @@ import asyncio
 
 import pytest
 
-from app.config import Configuracion
+from app.settings import Configuracion
 from app.providers import CuotaAgotada, GestorProveedores, RespuestaLLM, SolicitudLLM
 from app.providers._http import ProveedorHTTP
 from app.providers.dependencias import crear_proveedor

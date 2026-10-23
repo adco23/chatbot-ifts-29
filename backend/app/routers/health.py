@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.config import NOMBRE_SERVICIO, Configuracion, obtener_configuracion
+from app.settings import NOMBRE_SERVICIO, Configuracion, obtener_configuracion
 
 router = APIRouter(tags=["salud"])
 

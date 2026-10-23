@@ -38,7 +38,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.config import Configuracion, obtener_configuracion
+from app.settings import Configuracion, obtener_configuracion
 
 logger = logging.getLogger(__name__)
 

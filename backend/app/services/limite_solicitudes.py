@@ -43,7 +43,7 @@ from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
 
-from app.config import Configuracion, obtener_configuracion
+from app.settings import Configuracion, obtener_configuracion
 
 logger = logging.getLogger(__name__)
 

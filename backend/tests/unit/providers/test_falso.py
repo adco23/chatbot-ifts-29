@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from app.config import PROVEEDORES_LLM_VALIDOS
+from app.settings import PROVEEDORES_LLM_VALIDOS
 from app.providers import CuotaAgotada, ErrorTemporal, RespuestaLLM
 from app.providers.dependencias import REGISTRO_PROVEEDORES
 from app.providers.falso import MODELO_FALSO, ProveedorFalso

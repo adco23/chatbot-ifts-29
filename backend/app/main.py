@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 
-from app.config import obtener_configuracion
+from app.settings import obtener_configuracion
 from app.routers import health, admin
 
 

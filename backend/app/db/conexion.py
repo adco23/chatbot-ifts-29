@@ -5,7 +5,7 @@ from functools import lru_cache
 
 from supabase import Client, create_client
 
-from app.config import obtener_configuracion
+from app.settings import obtener_configuracion
 
 logger = logging.getLogger(__name__)
 

@@ -6,7 +6,7 @@ import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from app.config import PROVEEDORES_LLM_VALIDOS, obtener_configuracion
+from app.settings import PROVEEDORES_LLM_VALIDOS, obtener_configuracion
 from app.providers import GestorProveedores, ProveedorGemini, ProveedorGroq
 from app.providers.dependencias import (
     REGISTRO_PROVEEDORES,

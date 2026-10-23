@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pydantic import ValidationError  # noqa: E402
 
-from app.config import PROVEEDORES_LLM_VALIDOS, Configuracion, obtener_configuracion  # noqa: E402
+from app.settings import PROVEEDORES_LLM_VALIDOS, Configuracion, obtener_configuracion  # noqa: E402
 from app.providers import (  # noqa: E402
     ContenidoBloqueado,
     CuotaAgotada,

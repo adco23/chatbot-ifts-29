@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.config import obtener_configuracion
+from app.settings import obtener_configuracion
 from app.db.conexion import obtener_cliente_supabase
 
 # Valores ficticios: no son credenciales reales.

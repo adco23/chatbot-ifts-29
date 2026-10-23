@@ -22,7 +22,7 @@ import asyncio
 
 import pytest
 
-from app.config import Configuracion
+from app.settings import Configuracion
 from app.providers import CuotaAgotada
 from app.providers.embeddings import GestorEmbeddings, ResultadoEmbedding
 from app.providers.embeddings._http import ProveedorEmbeddingsHTTP

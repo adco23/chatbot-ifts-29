@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.config import obtener_configuracion
+from app.settings import obtener_configuracion
 
 # Valores ficticios: no son claves reales ni tienen su formato.
 CLAVE_GEMINI = "clave-ficticia-gemini"

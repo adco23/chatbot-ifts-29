@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from app.config import Configuracion, obtener_configuracion
+from app.settings import Configuracion, obtener_configuracion
 from app.providers.embeddings._http import ProveedorEmbeddingsHTTP
 from app.providers.embeddings.cloudflare import EmbeddingsCloudflare
 from app.providers.embeddings.gemini import EmbeddingsGemini

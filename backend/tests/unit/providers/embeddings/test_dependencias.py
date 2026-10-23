@@ -6,7 +6,7 @@ import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from app.config import PROVEEDORES_EMBEDDINGS_VALIDOS, obtener_configuracion
+from app.settings import PROVEEDORES_EMBEDDINGS_VALIDOS, obtener_configuracion
 from app.providers import CuotaAgotada
 from app.providers.embeddings import EmbeddingsCloudflare, EmbeddingsGemini, GestorEmbeddings
 from app.providers.embeddings.dependencias import (
