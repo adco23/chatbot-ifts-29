@@ -43,7 +43,7 @@ def resultado_embeddings(textos) -> ResultadoEmbeddings:
 
 @pytest.fixture
 def documento() -> DocumentoDrive:
-    return DocumentoDrive(drive_id="drive-uno", titulo="Preguntas.pdf", tipo_mime="application/pdf")
+    return DocumentoDrive(drive_id="drive-uno", titulo="GENERAL__Preguntas.pdf", tipo_mime="application/pdf")
 
 
 @pytest.fixture
@@ -53,11 +53,12 @@ def config() -> Configuracion:
 
 @pytest.fixture
 def colaboradores(monkeypatch):
+    monkeypatch.setattr(sincronizador.repositorio, "listar_materias_chat", MagicMock(return_value=[]))
     consultar = MagicMock(return_value=None)
     descargar = MagicMock(return_value=b"documento-simulado")
     extraer = MagicMock(return_value=SECCIONES)
     persistir = MagicMock(
-        side_effect=lambda documento, fragmentos: ResumenIndexacion(
+        side_effect=lambda documento, fragmentos, **kwargs: ResumenIndexacion(
             documento_id=7, fragmentos_indexados=len(fragmentos), indexado_en=FECHA
         )
     )
@@ -130,7 +131,7 @@ def test_indexa_secciones_con_embed_documents_antes_de_persistir(documento, conf
         documento.drive_id, tipo_mime="application/pdf", estricto=True
     )
     colaboradores.extraer.assert_called_once_with(
-        b"documento-simulado", "Preguntas.pdf", tipo_mime="application/pdf"
+        b"documento-simulado", "GENERAL__Preguntas.pdf", tipo_mime="application/pdf"
     )
     colaboradores.gestor.embed_documents.assert_awaited_once_with(
         [seccion["content"] for seccion in SECCIONES]
@@ -209,7 +210,7 @@ def test_un_error_no_interrumpe_documentos_restantes_ni_filtra_payload(
 ):
     privado = "contenido-privado-que-no-debe-registrarse"
     colaboradores.descargar.side_effect = [RuntimeError(privado), b"segundo"]
-    otro = documento.model_copy(update={"drive_id": "drive-dos", "titulo": "Otro.pdf"})
+    otro = documento.model_copy(update={"drive_id": "drive-dos", "titulo": "GENERAL__Otro.pdf"})
     resultado = asyncio.run(
         sincronizador.run_full_sync(
             [documento, otro], gestor=colaboradores.gestor, configuracion=config
@@ -275,6 +276,104 @@ def test_sync_document_chunks_delega_una_unica_operacion(documento, monkeypatch)
     monkeypatch.setattr(sincronizador, "reemplazar_fragmentos_documento", rpc)
     assert sincronizador.sync_document_chunks(documento, fragmentos) == resumen
     rpc.assert_called_once_with(documento, fragmentos)
+
+
+def test_indexacion_versionada_reutiliza_flujo_y_transporta_bloqueo(
+    documento, colaboradores, config, monkeypatch,
+):
+    validar = MagicMock()
+    monkeypatch.setattr(sincronizador, "validar_version_descargada", validar)
+    documento = documento.model_copy(update={"drive_modified_time": FECHA})
+    colaboradores.persistir.side_effect = lambda doc, chunks, **kwargs: ResumenIndexacion(
+        documento_id=7, fragmentos_indexados=len(chunks), indexado_en=FECHA,
+    )
+    resultado = asyncio.run(sincronizador.run_full_sync(
+        [documento], gestor=colaboradores.gestor, configuracion=config, ejecucion_id="dueño",
+    ))
+    assert resultado.procesados == 1
+    validar.assert_called_once_with(documento, b"documento-simulado")
+    assert colaboradores.persistir.call_args.kwargs["ejecucion_id"] == "dueño"
+    assert colaboradores.persistir.call_args.kwargs["metadata"].materia_id is None
+    colaboradores.gestor.embed_documents.assert_awaited_once()
+
+
+def test_cambio_durante_descarga_no_vectoriza_ni_persiste(
+    documento, colaboradores, config, monkeypatch,
+):
+    monkeypatch.setattr(sincronizador, "validar_version_descargada", MagicMock(
+        side_effect=ValueError("versión cambiada")))
+    documento = documento.model_copy(update={"drive_modified_time": FECHA})
+    resultado = asyncio.run(sincronizador.run_full_sync(
+        [documento], gestor=colaboradores.gestor, configuracion=config,
+    ))
+    assert resultado.resultados[0].error == "version_drive_modificada"
+    colaboradores.gestor.embed_documents.assert_not_called()
+    colaboradores.persistir.assert_not_called()
+
+
+def test_nombre_invalido_antes_de_descarga_y_creacion_gestor(documento, config, colaboradores, monkeypatch):
+    obtener = MagicMock(side_effect=AssertionError("No crear proveedores"))
+    monkeypatch.setattr(sincronizador, "obtener_gestor_embeddings", obtener)
+    invalido = documento.model_copy(update={"titulo": "2026C2__Inexistente__COM-F__Programa.pdf"})
+    resultado = asyncio.run(sincronizador.run_full_sync([invalido], configuracion=config))
+    assert resultado.resultados[0].error == "materia_no_reconocida"
+    colaboradores.descargar.assert_not_called()
+    colaboradores.persistir.assert_not_called()
+    obtener.assert_not_called()
+
+
+def test_indexacion_transporta_materia_real_antes_de_persistir(documento, config, colaboradores, monkeypatch):
+    monkeypatch.setattr(sincronizador.repositorio, "listar_materias_chat", MagicMock(return_value=[
+        SimpleNamespace(id=91, nombre="Técnicas de Programación"),
+    ]))
+    especifico = documento.model_copy(update={
+        "titulo": "2026C2__Tecnicas-de-Programacion__COM-GENERAL__Programa.pdf",
+    })
+    resultado = asyncio.run(sincronizador.run_full_sync([especifico], configuracion=config,
+                                                       gestor=colaboradores.gestor))
+    assert resultado.procesados == 1
+    metadata = colaboradores.persistir.call_args.kwargs["metadata"]
+    assert metadata.materia_id == 91 and metadata.comision is None
+    assert metadata.materia_nombre == "Técnicas de Programación"
+
+
+def test_explicita_solo_metadata_no_descarga_ni_vectoriza(documento, config, colaboradores, monkeypatch):
+    from app.models.rag import DocumentoPersistido
+
+    documento = documento.model_copy(update={"drive_modified_time": FECHA, "drive_md5_checksum": "a" * 32})
+    previo = DocumentoPersistido(id=7, drive_id=documento.drive_id, titulo="Anterior",
+                                materia_id=91, indexado_en=FECHA, drive_modified_time=FECHA,
+                                drive_md5_checksum="a" * 32)
+    colaboradores.consultar.return_value = previo
+    actualizar = MagicMock(return_value=True)
+    monkeypatch.setattr(sincronizador.repositorio, "actualizar_metadata_documento_sync", actualizar)
+    monkeypatch.setattr(sincronizador.repositorio, "contar_fragmentos_documento", MagicMock(return_value=3))
+    resultado = asyncio.run(sincronizador.run_full_sync([documento], configuracion=config,
+                                                       gestor=colaboradores.gestor))
+    assert resultado.resultados[0].resumen.documento_id == 7
+    assert resultado.resultados[0].resumen.indexado_en == FECHA
+    assert actualizar.call_args.args[1].materia_id is None
+    colaboradores.descargar.assert_not_called()
+    colaboradores.gestor.embed_documents.assert_not_called()
+
+
+def test_explicita_nombre_invalido_inactiva_con_lease(documento, config, colaboradores, monkeypatch):
+    from app.models.rag import DocumentoPersistido
+
+    colaboradores.consultar.return_value = DocumentoPersistido(
+        id=7, drive_id=documento.drive_id, titulo="Anterior", estado="activo", vigente=True,
+    )
+    bloqueo = MagicMock(return_value=True)
+    estado = MagicMock(return_value=True)
+    monkeypatch.setattr(sincronizador.repositorio, "gestionar_bloqueo_sync", bloqueo)
+    monkeypatch.setattr(sincronizador.repositorio, "actualizar_estado_documento_sync", estado)
+    resultado = asyncio.run(sincronizador.run_full_sync(
+        [documento.model_copy(update={"titulo": "Invalido.pdf"})], configuracion=config,
+    ))
+    assert resultado.resultados[0].error == "nombre_invalido"
+    assert [c.args[1] for c in bloqueo.call_args_list] == ["adquirir", "liberar"]
+    assert estado.call_args.args[:2] == (documento.drive_id, False)
+    colaboradores.descargar.assert_not_called()
 
 
 @pytest.mark.parametrize(

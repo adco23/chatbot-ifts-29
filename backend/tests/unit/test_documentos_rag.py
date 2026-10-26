@@ -1,6 +1,8 @@
 """Lectura documental sin credenciales, red ni archivos institucionales reales."""
 
+import hashlib
 from io import BytesIO
+from unittest.mock import Mock
 
 import pytest
 from docx import Document
@@ -10,6 +12,79 @@ from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 from app.drive import cliente, extractores
 from app.drive.cliente import ErrorDrive
 from app.drive.extractores import ErrorExtraccion, extraer_texto_desde_bytes
+from app.models.rag import DocumentoDrive
+
+
+def archivo_versionado(**cambios):
+    return dict({"id": "abc", "name": "FAQ.pdf", "mimeType": "application/pdf",
+                 "modifiedTime": "2026-10-23T12:00:00Z", "md5Checksum": "a" * 32}, **cambios)
+
+
+def test_snapshot_solicita_modo_estricto_y_carpeta(monkeypatch):
+    listar = Mock(return_value=[archivo_versionado(), archivo_versionado(
+        id="doc", mimeType="application/vnd.google-apps.document", md5Checksum=None)])
+    monkeypatch.setattr(cliente, "listar_archivos_institucionales", listar)
+    documentos = cliente.listar_documentos_sincronizables()
+    assert len(documentos) == 2
+    assert documentos[1].drive_md5_checksum is None
+    listar.assert_called_once_with(estricto=True, validar_carpeta=True)
+
+
+@pytest.mark.parametrize("archivos", [
+    [archivo_versionado(), archivo_versionado()], [archivo_versionado(modifiedTime=None)],
+    [archivo_versionado(md5Checksum="incorrecto")], [archivo_versionado(id="")],
+    [archivo_versionado(mimeType=None)],
+])
+def test_snapshot_invalido_no_se_confunde_con_carpeta_vacia(monkeypatch, archivos):
+    monkeypatch.setattr(cliente, "listar_archivos_institucionales", Mock(return_value=archivos))
+    with pytest.raises(ErrorDrive):
+        cliente.listar_documentos_sincronizables()
+
+
+def test_incomplete_search_se_trata_como_error():
+    with pytest.raises(ErrorDrive):
+        cliente.listar_archivos_institucionales(
+            servicio=ServicioFalso(paginas=[{"incompleteSearch": True, "files": []}]),
+            estricto=True,
+        )
+
+
+def test_carpeta_inaccesible_no_es_lista_vacia():
+    with pytest.raises(ErrorDrive):
+        cliente.listar_archivos_institucionales(
+            servicio=ServicioFalso(), estricto=True, validar_carpeta=True,
+        )
+
+
+def test_descarga_se_verifica_antes_de_etiquetar_version(monkeypatch):
+    contenido = b"documento ficticio"
+    checksum = hashlib.md5(contenido, usedforsecurity=False).hexdigest()
+    archivo = archivo_versionado(md5Checksum=checksum)
+    documento = DocumentoDrive(drive_id="abc", titulo="FAQ.pdf", tipo_mime="application/pdf",
+                               drive_modified_time=archivo["modifiedTime"],
+                               drive_md5_checksum=checksum)
+    monkeypatch.setattr(cliente, "obtener_metadatos_archivo", Mock(return_value=archivo))
+    cliente.validar_version_descargada(documento, contenido)
+    with pytest.raises(ErrorDrive):
+        cliente.validar_version_descargada(documento, b"otro contenido")
+    archivo["modifiedTime"] = "2026-10-24T12:00:00Z"
+    with pytest.raises(ErrorDrive):
+        cliente.validar_version_descargada(documento, contenido)
+
+
+def test_credenciales_json_en_configuracion_sin_archivo(monkeypatch):
+    from app.settings import Configuracion
+
+    credenciales = object()
+    crear = Mock(return_value=credenciales)
+    construir = Mock(return_value="servicio-falso")
+    monkeypatch.setattr(cliente, "obtener_configuracion", Mock(return_value=Configuracion(
+        google_service_account_json='{"type":"service_account"}')))
+    monkeypatch.setattr(cliente.service_account.Credentials, "from_service_account_info", crear)
+    monkeypatch.setattr(cliente, "build", construir)
+    assert cliente.conectar_drive() == "servicio-falso"
+    assert crear.call_args.kwargs["scopes"] == cliente.SCOPES
+    assert construir.call_args.kwargs["credentials"] is credenciales
 
 
 class SolicitudFalsa:
@@ -176,7 +251,8 @@ def test_metadatos_por_id_piden_solo_los_campos_necesarios():
 
     assert resultado == servicio.metadatos
     assert servicio.llamadas == [("get", {
-        "fileId": "documento-ficticio", "fields": "id,name,mimeType,webViewLink"
+        "fileId": "documento-ficticio",
+        "fields": "id,name,mimeType,webViewLink,modifiedTime,md5Checksum"
     })]
     assert servicio.cierres == 0
 

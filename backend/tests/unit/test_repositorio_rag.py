@@ -72,9 +72,10 @@ def test_reemplazo_es_una_rpc_sin_delete_insert_http():
     resumen = repositorio.reemplazar_fragmentos_documento(documento, fragmentos, cliente=base)
     assert resumen.documento_id == 7
     assert resumen.indexado_en == instante
-    base.rpc.assert_called_once_with("reemplazar_fragmentos_documento", {
+    base.rpc.assert_called_once_with("reemplazar_fragmentos_documento_versionado", {
         "p_drive_id": "drive-faq", "p_titulo": "FAQ",
         "p_fragmentos": [item.model_dump() for item in fragmentos],
+        "p_drive_modified_time": None, "p_drive_md5_checksum": None, "p_propietario": None,
     })
     base.table.assert_not_called()
 

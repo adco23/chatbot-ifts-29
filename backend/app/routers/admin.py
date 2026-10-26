@@ -1,31 +1,21 @@
-import os
-from fastapi import APIRouter, Header, HTTPException
-from app.services.sincronizador import run_full_sync
+"""Ejecución manual y cron sobre el mismo servicio de reconciliación."""
 
-router = APIRouter()
+from fastapi import APIRouter, Depends, HTTPException, Response
 
-# Leemos el token secreto de las variables de entorno (configurado en Vercel)
-# Si no existe (ej: entorno local sin .env), usa un valor por defecto.
-CRON_SECRET = os.getenv("CRON_SECRET", "mi_token_secreto_local")
+from app.models.rag import ResumenSincronizacionDrive
+from app.services.autenticacion_admin import verificar_token_admin
+from app.services.sincronizador import SincronizacionEnCurso, sincronizar_drive_completo
 
-@router.post("/sync", tags=["Admin"])
-async def trigger_sync(authorization: str = Header(None)):
-    """
-    T27: Endpoint protegido.
-    Este endpoint será llamado diariamente por Vercel Cron.
-    """
-    # 1. Capa de seguridad: Verificamos que Vercel envíe el token correcto
-    if authorization != f"Bearer {CRON_SECRET}":
-        raise HTTPException(status_code=401, detail="No autorizado para sincronizar")
-        
-    # 2. Acá en el futuro tu orquestador va a llamar a drive/cliente.py.
-    # Por ahora, usamos un pequeño diccionario de prueba para cerrar el flujo:
-    mock_archivos_drive = {
-        "/drive/docs/reglamento_2026.pdf": "hash_nuevo_123"
-    }
-    
-    # 3. Disparamos la función que acabás de probar por consola
-    resultado = run_full_sync(mock_archivos_drive)
-    
-    # 4. Le devolvemos el JSON a Vercel
+router = APIRouter(dependencies=[Depends(verificar_token_admin)])
+
+
+@router.post("/sync", response_model=ResumenSincronizacionDrive, tags=["Admin"])
+@router.get("/sync", response_model=ResumenSincronizacionDrive, tags=["Admin"])
+async def trigger_sync(response: Response) -> ResumenSincronizacionDrive:
+    try:
+        resultado = await sincronizar_drive_completo()
+    except SincronizacionEnCurso:
+        raise HTTPException(409, detail="Ya hay una sincronización en curso.") from None
+    response.headers["Cache-Control"] = "no-store"
+    response.status_code = {"ok": 200, "parcial": 207, "error": 503}[resultado.estado]
     return resultado

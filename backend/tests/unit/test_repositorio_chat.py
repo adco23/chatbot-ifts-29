@@ -13,14 +13,17 @@ def cliente(filas):
     consulta = base.table.return_value
     consulta.select.return_value = consulta
     consulta.eq.return_value = consulta
+    for metodo in ("gt", "order", "limit"):
+        getattr(consulta, metodo).return_value = consulta
     consulta.execute.return_value = SimpleNamespace(data=filas)
+    consulta.execute.side_effect = [SimpleNamespace(data=filas), SimpleNamespace(data=[])]
     return base
 
 
 def test_materias_tipadas():
     base = cliente([{"id": 4, "codigo": "PROG", "nombre": "Programación"}])
     assert r.listar_materias_chat(cliente=base)[0].id == 4
-    base.table.assert_called_once_with("materia")
+    assert all(c.args == ("materia",) for c in base.table.call_args_list)
 
 
 def test_documentos_solo_activos_vigentes():

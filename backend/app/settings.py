@@ -110,6 +110,20 @@ class Configuracion(BaseSettings):
     rag_top_k: int = Field(default=5, gt=0, strict=True)
     rag_umbral_confianza: float = Field(default=0.70, ge=0, le=1, allow_inf_nan=False)
 
+    metadata_comision_max_longitud: int = Field(default=8, ge=1, le=32)
+    metadata_tipos_documentales: Annotated[list[str], NoDecode] = ["Programa", "Cronograma"]
+
+    @field_validator("metadata_tipos_documentales", mode="before")
+    @classmethod
+    def _tipos_documentales(cls, valor: object) -> object:
+        if isinstance(valor, str):
+            valor = valor.split(",")
+        if isinstance(valor, (list, tuple)):
+            if not valor or any(not isinstance(v, str) or not v.strip() for v in valor):
+                raise ValueError("Se requiere al menos un tipo documental no vacío.")
+            return [v.strip() for v in valor]
+        return valor
+
     @field_validator("rag_top_k", mode="before")
     @classmethod
     def _leer_top_k(cls, valor: object) -> object:
@@ -138,6 +152,8 @@ class Configuracion(BaseSettings):
     # falta alguna de las dos, la aplicación arranca sin base.
     supabase_url: str | None = None
     supabase_key: SecretStr | None = None
+    # Alternativa de despliegue al archivo local; nunca registrar su contenido.
+    google_service_account_json: SecretStr | None = None
 
     @field_validator(
         "gemini_api_key",
@@ -147,6 +163,7 @@ class Configuracion(BaseSettings):
         "admin_api_token",
         "supabase_url",
         "supabase_key",
+        "google_service_account_json",
         mode="before",
     )
     @classmethod

@@ -11,6 +11,7 @@ from app.models.rag import (
     FiltrosRecuperacion,
     FragmentoParaIndexar,
     FragmentoRecuperado,
+    MetadataDocumental,
     ResumenIndexacion,
     validar_vector_rag,
 )
@@ -100,11 +101,22 @@ def listar_materias_chat(*, cliente: Client | None = None):
     from app.models.chat import MateriaChat
 
     base = _cliente_rag(cliente)
-    filas = _ejecutar_rag(lambda: base.table("materia").select("id,codigo,nombre").execute())
-    try:
-        return [MateriaChat.model_validate(fila) for fila in filas]
-    except Exception:
-        raise ErrorRepositorio("El catálogo de materias no es válido.") from None
+    materias = []
+    ultimo_id = 0
+    while True:
+        filas = _ejecutar_rag(lambda: base.table("materia").select("id,codigo,nombre")
+                             .gt("id", ultimo_id).order("id").limit(500).execute())
+        try:
+            pagina = [MateriaChat.model_validate(fila) for fila in filas]
+            ids = [m.id for m in pagina]
+            if ids != sorted(set(ids)) or any(i <= ultimo_id for i in ids):
+                raise ValueError("Paginación inválida.")
+        except Exception:
+            raise ErrorRepositorio("El catálogo de materias no es válido.") from None
+        materias.extend(pagina)
+        if not pagina:
+            return materias
+        ultimo_id = pagina[-1].id
 
 
 def listar_documentos_chat(*, cliente: Client | None = None) -> list[DocumentoPersistido]:
@@ -147,7 +159,8 @@ def obtener_documento_por_drive_id(
         lambda: (
             base.schema("public")
             .table("documento")
-            .select("id,titulo,drive_id,materia_id,comision,periodo,vigente,estado,indexado_en")
+            .select("id,titulo,drive_id,materia_id,comision,periodo,vigente,estado,indexado_en,"
+                    "drive_modified_time,drive_md5_checksum")
             .eq("drive_id", drive_id.strip())
             .limit(1)
             .execute()
@@ -204,6 +217,8 @@ def reemplazar_fragmentos_documento(
     fragmentos: Sequence[FragmentoParaIndexar],
     *,
     cliente: Client | None = None,
+    ejecucion_id: str | None = None,
+    metadata: MetadataDocumental | None = None,
 ) -> ResumenIndexacion:
     """Una única transacción SQL conserva el documento y sustituye todo su índice."""
     if not isinstance(documento, DocumentoDrive):
@@ -220,9 +235,20 @@ def reemplazar_fragmentos_documento(
         "p_drive_id": documento.drive_id,
         "p_titulo": documento.titulo,
         "p_fragmentos": [fragmento.model_dump() for fragmento in lote],
+        "p_drive_modified_time": (
+            documento.drive_modified_time.isoformat() if documento.drive_modified_time else None
+        ),
+        "p_drive_md5_checksum": documento.drive_md5_checksum,
+        "p_propietario": ejecucion_id,
     }
+    nombre_rpc = "reemplazar_fragmentos_documento_versionado"
+    if metadata is not None:
+        parametros.update(_parametros_metadata(metadata))
+        nombre_rpc = "reemplazar_fragmentos_documento_academico"
     filas = _ejecutar_rag(
-        lambda: base.schema("public").rpc("reemplazar_fragmentos_documento", parametros).execute()
+        lambda: base.schema("public").rpc(
+            nombre_rpc, parametros,
+        ).execute()
     )
     try:
         if len(filas) != 1:
@@ -233,6 +259,101 @@ def reemplazar_fragmentos_documento(
         return resumen
     except Exception:
         raise ErrorRepositorio("La respuesta de indexación no respeta el contrato RAG.") from None
+
+
+def _parametros_metadata(metadata: MetadataDocumental) -> dict[str, Any]:
+    if not isinstance(metadata, MetadataDocumental):
+        raise ValueError("Se requiere metadata resuelta.")
+    return {"p_materia_id": metadata.materia_id, "p_comision": metadata.comision,
+            "p_periodo": metadata.periodo}
+
+
+def actualizar_metadata_documento_sync(
+    documento: DocumentoDrive, metadata: MetadataDocumental,
+    ejecucion_id: str | None, *, cliente: Client | None = None,
+) -> bool:
+    """Actualiza metadata y versión por Drive ID sin tocar fragmentos/indexado_en."""
+    parametros = {
+        "p_drive_id": documento.drive_id, "p_titulo": documento.titulo,
+        **_parametros_metadata(metadata),
+        "p_drive_modified_time": (
+            documento.drive_modified_time.isoformat() if documento.drive_modified_time else None
+        ),
+        "p_drive_md5_checksum": documento.drive_md5_checksum, "p_propietario": ejecucion_id,
+    }
+    base = _cliente_rag(cliente)
+    filas = _ejecutar_rag(lambda: base.schema("public").rpc(
+        "actualizar_metadata_documento_sync", parametros,
+    ).execute())
+    if len(filas) != 1 or type(filas[0].get("cambiado")) is not bool:
+        raise ErrorRepositorio("Respuesta de actualización de metadata inválida.")
+    return filas[0]["cambiado"]
+
+
+def listar_documentos_sync(*, cliente: Client | None = None) -> list[DocumentoPersistido]:
+    """Todos los registros del corpus institucional, sin truncamiento PostgREST."""
+    base = _cliente_rag(cliente)
+    documentos = []
+    ultimo_id = 0
+    while True:
+        filas = _ejecutar_rag(lambda: base.schema("public").table("documento").select(
+            "id,titulo,drive_id,materia_id,comision,periodo,vigente,estado,indexado_en,"
+            "drive_modified_time,drive_md5_checksum"
+        ).gt("id", ultimo_id).order("id").limit(500).execute())
+        if not filas:
+            return documentos
+        try:
+            pagina = [DocumentoPersistido.model_validate(fila) for fila in filas]
+            if any(d.id <= ultimo_id for d in pagina):
+                raise ValueError("Paginación inválida.")
+            if [d.id for d in pagina] != sorted({d.id for d in pagina}):
+                raise ValueError("Orden inválido.")
+        except Exception:
+            raise ErrorRepositorio("El snapshot del corpus no es válido.") from None
+        documentos.extend(pagina)
+        ultimo_id = pagina[-1].id
+
+
+def gestionar_bloqueo_sync(
+    ejecucion_id: str, accion: str, *, cliente: Client | None = None,
+) -> bool:
+    if accion not in {"adquirir", "renovar", "liberar"}:
+        raise ValueError("Acción de bloqueo inválida.")
+    base = _cliente_rag(cliente)
+    filas = _ejecutar_rag(lambda: base.schema("public").rpc("gestionar_bloqueo_sync", {
+        "p_propietario": ejecucion_id, "p_accion": accion,
+    }).execute())
+    if len(filas) != 1 or type(filas[0].get("adquirido")) is not bool:
+        raise ErrorRepositorio("Respuesta de bloqueo inválida.")
+    return filas[0]["adquirido"]
+
+
+def actualizar_estado_documento_sync(
+    drive_id: str, activo: bool, ejecucion_id: str, *, titulo: str | None = None,
+    cliente: Client | None = None,
+) -> bool:
+    base = _cliente_rag(cliente)
+    filas = _ejecutar_rag(lambda: base.schema("public").rpc("actualizar_estado_documento_sync", {
+        "p_drive_id": drive_id, "p_activo": activo, "p_propietario": ejecucion_id,
+        "p_titulo": titulo,
+    }).execute())
+    if len(filas) != 1 or type(filas[0].get("cambiado")) is not bool:
+        raise ErrorRepositorio("Respuesta de actualización inválida.")
+    return filas[0]["cambiado"]
+
+
+def contar_fragmentos_documento(documento_id: int, *, cliente: Client | None = None) -> int:
+    _validar_id(documento_id)
+    base = _cliente_rag(cliente)
+    try:
+        cantidad = base.schema("public").table("fragmento").select(
+            "id", count="exact", head=True,
+        ).eq("documento_id", documento_id).execute().count
+        if type(cantidad) is not int or cantidad < 0:
+            raise ValueError("Conteo inválido.")
+        return cantidad
+    except Exception:
+        raise ErrorRepositorio("No se pudo contar los fragmentos del documento.") from None
 
 
 def buscar_fragmentos_similares(

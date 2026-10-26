@@ -18,9 +18,9 @@ if TYPE_CHECKING:
     from app.models.rag import DocumentoDrive, ResultadoRecuperacion
 
 DOCUMENTOS_POR_DEFECTO = (
-    "Preguntas_frecuentes",
-    "Plan_de_estudios_TSDS",
-    "Informacion_Oficial_IFTS29.pdf",
+    "GENERAL__Preguntas-frecuentes",
+    "GENERAL__Plan-de-estudios-TSDS",
+    "GENERAL__Informacion-oficial-IFTS29.pdf",
 )
 CONSULTAS_POR_DEFECTO = (
     "¿Cómo puedo contactar al IFTS 29?",
@@ -90,6 +90,8 @@ def seleccionar_documentos(
                 titulo=archivo["name"],
                 tipo_mime=archivo["mimeType"],
                 enlace=archivo.get("webViewLink"),
+                drive_modified_time=archivo.get("modifiedTime"),
+                drive_md5_checksum=archivo.get("md5Checksum"),
             )
         )
     if not documentos:

@@ -3,7 +3,7 @@
 import math
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -35,6 +35,15 @@ class DocumentoDrive(ModeloRag):
     titulo: str = Field(min_length=1)
     tipo_mime: str = Field(min_length=1)
     enlace: str | None = None
+    drive_modified_time: datetime | None = None
+    drive_md5_checksum: str | None = Field(default=None, pattern=r"^[a-fA-F0-9]{32}$")
+
+    @field_validator("drive_modified_time")
+    @classmethod
+    def _fecha_con_zona(cls, valor: datetime | None) -> datetime | None:
+        if valor is not None and valor.utcoffset() is None:
+            raise ValueError("La versión de Drive requiere zona horaria.")
+        return valor
 
     @field_validator("drive_id", "titulo", "tipo_mime", mode="before")
     @classmethod
@@ -54,6 +63,19 @@ class DocumentoPersistido(ModeloRag):
     vigente: bool | None = None
     estado: str | None = None
     indexado_en: datetime | None = None
+    drive_modified_time: datetime | None = None
+    drive_md5_checksum: str | None = None
+
+
+class MetadataDocumental(ModeloRag):
+    """Metadata resuelta contra el catálogo; nombre y tipo son transitorios."""
+
+    materia_id: int | None = Field(default=None, gt=0, strict=True)
+    materia_normalizada: str | None = None
+    materia_nombre: str | None = None
+    comision: str | None = None
+    periodo: str | None = None
+    tipo: str
 
 
 class FragmentoParaIndexar(ModeloRag):
@@ -138,3 +160,20 @@ class ResultadoRecuperacion(ModeloRag):
     confianza: float = Field(ge=0, le=1, allow_inf_nan=False)
     umbral: float = Field(ge=0, le=1, allow_inf_nan=False)
     evidencia_suficiente: bool
+
+
+class ErrorSincronizacion(ModeloRag):
+    drive_id: str | None = None
+    categoria: str
+
+
+class ResumenSincronizacionDrive(ModeloRag):
+    estado: Literal["ok", "parcial", "error"] = "ok"
+    drive_encontrados: int = 0
+    nuevos: int = 0
+    actualizados: int = 0
+    inactivados: int = 0
+    reactivados: int = 0
+    sin_cambios: int = 0
+    errores: int = 0
+    detalles: list[ErrorSincronizacion] = Field(default_factory=list)
