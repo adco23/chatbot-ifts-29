@@ -139,3 +139,25 @@ def test_las_claves_no_aparecen_en_errores_de_validacion(monkeypatch, variable, 
 
 def test_health_responde_200_sin_variables(cliente):
     assert cliente.get("/health").status_code == 200
+
+
+def test_retry_llm_configurable_sin_modificar_embeddings(monkeypatch):
+    config = obtener_configuracion()
+    assert config.llm_reintentos_principal == 1 and config.llm_backoff_segundos == 0.25
+    monkeypatch.setenv("LLM_REINTENTOS_PRINCIPAL", "0")
+    monkeypatch.setenv("LLM_BACKOFF_SEGUNDOS", "0.1")
+    obtener_configuracion.cache_clear()
+    config = obtener_configuracion()
+    assert config.llm_reintentos_principal == 0 and config.llm_backoff_segundos == 0.1
+    assert config.gemini_embedding_dimension == 768 and config.embedding_primary == "gemini"
+
+
+@pytest.mark.parametrize("variable,valor", [
+    ("LLM_REINTENTOS_PRINCIPAL", "-1"), ("LLM_REINTENTOS_PRINCIPAL", "2"),
+    ("LLM_BACKOFF_SEGUNDOS", "-0.1"), ("LLM_BACKOFF_SEGUNDOS", "NaN"),
+    ("LLM_BACKOFF_SEGUNDOS", "inf"),
+])
+def test_config_retry_llm_invalida(monkeypatch, variable, valor):
+    monkeypatch.setenv(variable, valor)
+    with pytest.raises(ValidationError):
+        obtener_configuracion()

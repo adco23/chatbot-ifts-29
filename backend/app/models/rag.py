@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.settings import DIMENSION_EMBEDDINGS_RAG
 
+TipoDocumental = Literal["general", "programa", "cronograma"]
+
 
 def validar_vector_rag(vector: Sequence[float]) -> None:
     """Valida el valor persistible sin transformarlo ni incluirlo en errores."""
@@ -65,10 +67,11 @@ class DocumentoPersistido(ModeloRag):
     indexado_en: datetime | None = None
     drive_modified_time: datetime | None = None
     drive_md5_checksum: str | None = None
+    tipo_documental: TipoDocumental | None = None
 
 
 class MetadataDocumental(ModeloRag):
-    """Metadata resuelta contra el catálogo; nombre y tipo son transitorios."""
+    """Metadata resuelta contra el catálogo; el nombre oficial es transitorio."""
 
     materia_id: int | None = Field(default=None, gt=0, strict=True)
     materia_normalizada: str | None = None
@@ -76,6 +79,13 @@ class MetadataDocumental(ModeloRag):
     comision: str | None = None
     periodo: str | None = None
     tipo: str
+
+    @property
+    def tipo_documental(self) -> TipoDocumental:
+        canonico = self.tipo.casefold()
+        if canonico not in ("general", "programa", "cronograma"):
+            raise ValueError("Tipo documental no soportado por el esquema.")
+        return canonico
 
 
 class FragmentoParaIndexar(ModeloRag):
@@ -108,6 +118,7 @@ class FiltrosRecuperacion(ModeloRag):
     comision: str | None = None
     periodo: str | None = None
     vigente: bool | None = True
+    tipo_documental: TipoDocumental | None = None
 
     @field_validator("comision", "periodo")
     @classmethod
@@ -127,6 +138,7 @@ class FragmentoRecuperado(ModeloRag):
     comision: str | None
     periodo: str | None
     vigente: bool | None
+    tipo_documental: TipoDocumental | None = None
 
 
 class ResumenIndexacion(ModeloRag):
@@ -160,6 +172,9 @@ class ResultadoRecuperacion(ModeloRag):
     confianza: float = Field(ge=0, le=1, allow_inf_nan=False)
     umbral: float = Field(ge=0, le=1, allow_inf_nan=False)
     evidencia_suficiente: bool
+    # None conserva el contrato genérico: todos los fragmentos son primarios.
+    # [] significa que el recorrido académico no encontró evidencia primaria.
+    fragmento_ids_primarios: list[int] | None = None
 
 
 class ErrorSincronizacion(ModeloRag):

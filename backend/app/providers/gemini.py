@@ -66,10 +66,10 @@ class ProveedorGemini(ProveedorHTTP):
     def _error_de_estado(self, respuesta: httpx.Response) -> ErrorProveedor:
         estado = respuesta.status_code
         if codigos_de_error(respuesta) & _CODIGOS_DE_CUOTA:
-            return CuotaAgotada(
+            return self._con_estado(CuotaAgotada(
                 f"El proveedor {self.nombre} informó límite de uso (estado HTTP {estado}).",
                 proveedor=self.nombre,
-            )
+            ), estado)
         # Casos revisados que quedan en el mapeo general:
         # - 400 FAILED_PRECONDITION (nivel gratuito no disponible en la región o
         #   facturación sin habilitar): es un problema de la cuenta, no de cuota, y no
@@ -77,7 +77,7 @@ class ProveedorGemini(ProveedorHTTP):
         # - 403 PERMISSION_DENIED: la clave no tiene acceso. La cuota agotada llega
         #   siempre como 429, así que el 403 queda como ErrorNoRecuperable.
         # - 504 DEADLINE_EXCEEDED: es un 5xx, queda como ErrorTemporal.
-        return error_por_estado(estado, self.nombre)
+        return self._con_estado(error_por_estado(estado, self.nombre), estado)
 
     def _interpretar(self, datos: dict[str, Any]) -> RespuestaLLM:
         # Si el filtro actúa sobre el prompt, no hay candidatos y el motivo viene en
@@ -128,9 +128,9 @@ class ProveedorGemini(ProveedorHTTP):
         )
 
     def _error_de_bloqueo(self, motivo: object) -> ContenidoBloqueado:
-        # El motivo es un valor de enumeración del proveedor, no texto del usuario.
-        detalle = motivo if isinstance(motivo, str) else "sin detalle"
+        # No confiar en valores desconocidos recibidos desde un servicio remoto.
+        detalle = motivo if isinstance(motivo, str) and motivo in _FINES_POR_BLOQUEO else "sin detalle"
         return ContenidoBloqueado(
             f"El proveedor {self.nombre} bloqueó la solicitud por sus filtros ({detalle}).",
-            proveedor=self.nombre,
+            proveedor=self.nombre, causa="bloqueo", detalle=detalle,
         )

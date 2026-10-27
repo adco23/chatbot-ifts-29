@@ -31,6 +31,7 @@ def persistido(identidad="uno", **cambios):
         "id": 1, "drive_id": identidad, "titulo": "GENERAL__Mismo-nombre.pdf", "estado": "activo",
         "vigente": True, "indexado_en": FECHA, "drive_modified_time": FECHA,
         "drive_md5_checksum": "a" * 32,
+        "tipo_documental": "general",
     }, **cambios))
 
 
@@ -75,6 +76,7 @@ def mundo(monkeypatch):
             "comision": metadata.comision, "periodo": metadata.periodo,
             "drive_modified_time": documento.drive_modified_time,
             "drive_md5_checksum": documento.drive_md5_checksum, "estado": "activo", "vigente": True,
+            "tipo_documental": metadata.tipo_documental,
         })
         return True
 
@@ -114,6 +116,19 @@ def test_sin_cambios_no_indexa_ni_escribe_documentos(mundo):
     assert ejecutar().sin_cambios == 1
     mundo.indexacion.assert_not_called()
     mundo.estado.assert_not_called()
+
+
+@pytest.mark.parametrize("tipo_previo", [None, "programa", "cronograma"])
+def test_cambio_solo_tipo_actualiza_metadata_sin_embeddings(mundo, tipo_previo):
+    mundo.archivos.append(drive())
+    mundo.almacen["uno"] = persistido(id=7, tipo_documental=tipo_previo)
+    assert ejecutar().actualizados == 1
+    guardado = mundo.almacen["uno"]
+    assert guardado.id == 7 and guardado.indexado_en == FECHA
+    assert guardado.tipo_documental == "general"
+    mundo.metadata.assert_called_once()
+    mundo.indexacion.assert_not_called()
+    assert ejecutar().sin_cambios == 1
 
 
 @pytest.mark.parametrize("cambios", [

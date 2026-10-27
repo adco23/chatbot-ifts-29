@@ -335,6 +335,7 @@ def test_indexacion_transporta_materia_real_antes_de_persistir(documento, config
     metadata = colaboradores.persistir.call_args.kwargs["metadata"]
     assert metadata.materia_id == 91 and metadata.comision is None
     assert metadata.materia_nombre == "Técnicas de Programación"
+    assert metadata.tipo_documental == "programa"
 
 
 def test_explicita_solo_metadata_no_descarga_ni_vectoriza(documento, config, colaboradores, monkeypatch):

@@ -100,11 +100,16 @@ def sync_document_chunks(
 def _resolver_metadata(
     documento: DocumentoDrive, catalogo: Sequence[MateriaCatalogo], config: Configuracion,
 ) -> MetadataDocumental:
-    return resolver_metadata_documental(
+    metadata = resolver_metadata_documental(
         documento.titulo, catalogo,
         comision_max_longitud=config.metadata_comision_max_longitud,
         tipos_documentales=config.metadata_tipos_documentales,
     )
+    try:
+        metadata.tipo_documental
+    except ValueError:
+        raise ErrorMetadataDocumental("tipo_documental_no_soportado") from None
+    return metadata
 
 
 async def _inactivar_invalido(anterior, ejecucion_id):
@@ -285,6 +290,7 @@ def _metadata_distinta(documento, anterior, metadata) -> bool:
     return (
         anterior.titulo != documento.titulo or anterior.materia_id != metadata.materia_id
         or anterior.comision != metadata.comision or anterior.periodo != metadata.periodo
+        or anterior.tipo_documental != metadata.tipo_documental
         or anterior.drive_modified_time != documento.drive_modified_time
         or (anterior.drive_md5_checksum or "").lower() != (documento.drive_md5_checksum or "").lower()
     )

@@ -140,6 +140,7 @@ def crear_analizador() -> argparse.ArgumentParser:
             comando.add_argument("--materia-id", type=_entero_positivo)
             comando.add_argument("--comision")
             comando.add_argument("--periodo")
+            comando.add_argument("--tipo-documental", choices=("general", "programa", "cronograma"))
             comando.add_argument("--vigente", choices=("true", "false", "todos"), default="true")
             if nombre == "preguntar":
                 comando.add_argument("--consulta", type=_texto_no_vacio, required=True)
@@ -180,10 +181,13 @@ def mostrar_recuperacion(consulta: str, resultado: ResultadoRecuperacion) -> Non
     if not resultado.fragmentos:
         print("Sin fragmentos para los filtros solicitados.")
     for posicion, fragmento in enumerate(resultado.fragmentos, start=1):
+        categoria = ("complementaria" if resultado.fragmento_ids_primarios is not None
+                     and fragmento.fragmento_id not in resultado.fragmento_ids_primarios else "primaria")
         print(
             f"{posicion}. {fragmento.titulo} · documento {fragmento.documento_id} · "
             f"fragmento {fragmento.fragmento_id} · orden {fragmento.orden} · "
-            f"similitud {fragmento.similitud:.4f}"
+            f"similitud {fragmento.similitud:.4f} · tipo {fragmento.tipo_documental or 'sin tipo'} · "
+            f"evidencia {categoria}"
         )
         print(fragmento.contenido)
 
@@ -243,6 +247,7 @@ async def _ejecutar(argumentos: argparse.Namespace) -> int:
             comision=argumentos.comision,
             periodo=argumentos.periodo,
             vigente={"true": True, "false": False, "todos": None}[argumentos.vigente],
+            tipo_documental=argumentos.tipo_documental,
         )
         consultas = (
             [argumentos.consulta]

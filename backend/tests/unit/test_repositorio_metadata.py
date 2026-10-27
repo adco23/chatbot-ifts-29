@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.db import repositorio as r
-from app.models.rag import DocumentoDrive, FragmentoParaIndexar, MetadataDocumental
+from app.models.rag import DocumentoDrive, FiltrosRecuperacion, FragmentoParaIndexar, MetadataDocumental
 
 
 def cliente(filas):
@@ -30,7 +30,8 @@ def test_reemplazo_academico_una_rpc_y_nulls_explicitos():
                                      ejecucion_id="propietario", cliente=base)
     base.rpc.assert_called_once()
     nombre, params = base.rpc.call_args.args
-    assert nombre == "reemplazar_fragmentos_documento_academico"
+    assert nombre == "reemplazar_fragmentos_documento_tipado"
+    assert params["p_tipo_documental"] == "general"
     assert params["p_materia_id"] is params["p_comision"] is params["p_periodo"] is None
     assert params["p_propietario"] == "propietario"
     base.table.assert_not_called()
@@ -42,7 +43,8 @@ def test_metadata_sin_fragmentos_y_materia_resuelta():
                                   materia_nombre="Nombre oficial")
     assert r.actualizar_metadata_documento_sync(documento(), metadata, "propietario", cliente=base)
     nombre, params = base.rpc.call_args.args
-    assert nombre == "actualizar_metadata_documento_sync"
+    assert nombre == "actualizar_metadata_documento_tipado"
+    assert params["p_tipo_documental"] == "programa"
     assert params["p_materia_id"] == 91 and params["p_comision"] is None
     assert params["p_drive_id"] == "misma-identidad"
     assert "p_fragmentos" not in params and "p_indexado_en" not in params
@@ -84,3 +86,52 @@ def test_catalogo_rechaza_paginacion_repetida():
     consulta.execute.return_value = SimpleNamespace(data=[{"id": 3, "codigo": "X", "nombre": "X"}])
     with pytest.raises(r.ErrorRepositorio):
         r.listar_materias_chat(cliente=base)
+
+
+@pytest.mark.parametrize("modalidad", ["primaria", "comun", "complementaria"])
+def test_nueva_rpc_academica_transporta_tipo_periodo_y_modalidad(modalidad):
+    base = cliente([])
+    filtros = FiltrosRecuperacion(materia_id=91, comision="F", periodo="2026C2", tipo_documental="cronograma")
+    assert r.buscar_fragmentos_similares([1.0] + [0.0] * 767, top_k=5, filtros=filtros,
+                                         modalidad=modalidad, cliente=base) == []
+    nombre, params = base.rpc.call_args.args
+    assert nombre == "match_fragmentos_academicos"
+    assert params["p_tipo_documental"] == "cronograma" and params["p_modalidad"] == modalidad
+    assert params["p_materia_id"] == 91 and params["p_comision"] == "F"
+    assert params["p_periodo"] == "2026C2" and params["p_vigente"] is True
+
+
+def test_rpc_generica_conserva_parametros_anteriores():
+    base = cliente([])
+    r.buscar_fragmentos_similares([1.0] + [0.0] * 767, top_k=5, cliente=base)
+    nombre, params = base.rpc.call_args.args
+    assert nombre == "match_fragmentos"
+    assert set(params) == {"p_query_embedding", "p_top_k", "p_materia_id", "p_comision", "p_periodo",
+                           "p_vigente", "p_documento_ids"}
+
+
+def test_firmas_comparan_texto_completo_ordenado_sin_vectores():
+    base = cliente([])
+    consulta = base.table.return_value
+    for metodo in ("select", "in_", "gt", "order", "limit"):
+        getattr(consulta, metodo).return_value = consulta
+    consulta.execute.side_effect = [SimpleNamespace(data=[
+        {"id": 1, "documento_id": 7, "orden": 2, "contenido": "Unidad dos"},
+        {"id": 2, "documento_id": 8, "orden": 1, "contenido": "Unidad   uno"},
+        {"id": 3, "documento_id": 7, "orden": 1, "contenido": "Unidad uno"},
+        {"id": 4, "documento_id": 8, "orden": 2, "contenido": "Unidad dos"},
+        {"id": 5, "documento_id": 9, "orden": 1, "contenido": "Otro programa"},
+    ]), SimpleNamespace(data=[])]
+    firmas = r.obtener_firmas_contenido_documentos([7, 8, 9, 10], cliente=base)
+    assert firmas[7] == firmas[8] and firmas[7] != firmas[9]
+    assert 10 not in firmas  # No equiparar documentos vacíos.
+    consulta.select.assert_called_with("id,documento_id,orden,contenido")
+    base.rpc.assert_not_called()
+
+
+def test_fallo_comparacion_no_se_interpreta_como_programas_iguales():
+    base = cliente([])
+    base.table.side_effect = RuntimeError("SECRETO")
+    with pytest.raises(r.ErrorRepositorio) as error:
+        r.obtener_firmas_contenido_documentos([7, 8], cliente=base)
+    assert "SECRETO" not in str(error.value)

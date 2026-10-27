@@ -207,17 +207,59 @@ class ClienteHTTP(ABC):
 class ProveedorHTTP(ClienteHTTP, ProveedorLLM):
     """Proveedor que hace una única llamada HTTP con JSON por generación."""
 
+    @property
+    def timeout_segundos(self) -> float:
+        return self._timeout_segundos
+
     async def generar(self, solicitud: SolicitudLLM) -> RespuestaLLM:
-        datos = await self._solicitar_json(
-            self._url(), self._encabezados(), self._cuerpo(solicitud)
+        try:
+            url, encabezados, cuerpo = self._url(), self._encabezados(), self._cuerpo(solicitud)
+        except Exception:
+            raise ErrorNoRecuperable(proveedor=self.nombre, causa="solicitud_invalida") from None
+        datos = await self._solicitar_json(url, encabezados, cuerpo)
+        try:
+            return self._interpretar(datos)
+        except ErrorProveedor:
+            raise
+        except Exception:
+            raise self._error_de_estructura() from None
+
+    async def _enviar(self, *args, **kwargs) -> httpx.Response:
+        # El transporte compartido queda intacto. Sólo el LLM añade diagnóstico.
+        try:
+            return await super()._enviar(*args, **kwargs)
+        except ErrorProveedor as error:
+            original = error.__context__
+            if isinstance(original, (TimeoutError, httpx.TimeoutException)):
+                error.causa = "timeout"
+                error.detalle = next((nombre for clase, nombre in (
+                    (httpx.ConnectTimeout, "connect"), (httpx.ReadTimeout, "read"),
+                    (httpx.WriteTimeout, "write"), (httpx.PoolTimeout, "pool"),
+                ) if isinstance(original, clase)), "total")
+            elif isinstance(original, httpx.TransportError) and not isinstance(error, ErrorNoRecuperable):
+                error.causa = "conexion"
+                error.detalle = "tls" if _es_falla_de_certificado(original) else None
+            elif isinstance(error, ErrorNoRecuperable):
+                error.causa = "solicitud_invalida"
+            raise
+
+    def _con_estado(self, error: ErrorProveedor, estado: int) -> ErrorProveedor:
+        error.estado_http = estado
+        error.causa = (
+            "http_429" if estado == 429 else "cuota" if isinstance(error, CuotaAgotada)
+            else "http_5xx" if estado >= 500 else "timeout" if estado == 408
+            else "http_4xx" if 400 <= estado < 500 else "http_otro"
         )
-        return self._interpretar(datos)
+        return error
+
+    def _error_de_estructura(self) -> ErrorTemporal:
+        return ErrorTemporal(proveedor=self.nombre, causa="respuesta_invalida", detalle="estructura")
 
     def _error_de_texto_vacio(self, motivo: object = None) -> ErrorTemporal:
-        detalle = f" (motivo de fin: {motivo})" if isinstance(motivo, str) and motivo else ""
         return ErrorTemporal(
-            f"El proveedor {self.nombre} devolvió una respuesta sin texto{detalle}.",
-            proveedor=self.nombre,
+            f"El proveedor {self.nombre} devolvió una respuesta sin texto.",
+            proveedor=self.nombre, causa="respuesta_invalida",
+            detalle=motivo if isinstance(motivo, str) else "texto_vacio",
         )
 
     @abstractmethod

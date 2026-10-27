@@ -1,3 +1,4 @@
+import hashlib
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -123,7 +124,7 @@ def listar_documentos_chat(*, cliente: Client | None = None) -> list[DocumentoPe
     """Cobertura documental activa/vigente; no es un catálogo de comisiones."""
     base = _cliente_rag(cliente)
     filas = _ejecutar_rag(lambda: base.table("documento").select(
-        "id,titulo,drive_id,materia_id,comision,periodo,vigente,estado,indexado_en"
+        "id,titulo,drive_id,materia_id,comision,periodo,vigente,estado,indexado_en,tipo_documental"
     ).eq("estado", "activo").eq("vigente", True).execute())
     try:
         return [DocumentoPersistido.model_validate(fila) for fila in filas]
@@ -160,7 +161,7 @@ def obtener_documento_por_drive_id(
             base.schema("public")
             .table("documento")
             .select("id,titulo,drive_id,materia_id,comision,periodo,vigente,estado,indexado_en,"
-                    "drive_modified_time,drive_md5_checksum")
+                    "drive_modified_time,drive_md5_checksum,tipo_documental")
             .eq("drive_id", drive_id.strip())
             .limit(1)
             .execute()
@@ -244,7 +245,7 @@ def reemplazar_fragmentos_documento(
     nombre_rpc = "reemplazar_fragmentos_documento_versionado"
     if metadata is not None:
         parametros.update(_parametros_metadata(metadata))
-        nombre_rpc = "reemplazar_fragmentos_documento_academico"
+        nombre_rpc = "reemplazar_fragmentos_documento_tipado"
     filas = _ejecutar_rag(
         lambda: base.schema("public").rpc(
             nombre_rpc, parametros,
@@ -265,7 +266,7 @@ def _parametros_metadata(metadata: MetadataDocumental) -> dict[str, Any]:
     if not isinstance(metadata, MetadataDocumental):
         raise ValueError("Se requiere metadata resuelta.")
     return {"p_materia_id": metadata.materia_id, "p_comision": metadata.comision,
-            "p_periodo": metadata.periodo}
+            "p_periodo": metadata.periodo, "p_tipo_documental": metadata.tipo_documental}
 
 
 def actualizar_metadata_documento_sync(
@@ -283,7 +284,7 @@ def actualizar_metadata_documento_sync(
     }
     base = _cliente_rag(cliente)
     filas = _ejecutar_rag(lambda: base.schema("public").rpc(
-        "actualizar_metadata_documento_sync", parametros,
+        "actualizar_metadata_documento_tipado", parametros,
     ).execute())
     if len(filas) != 1 or type(filas[0].get("cambiado")) is not bool:
         raise ErrorRepositorio("Respuesta de actualización de metadata inválida.")
@@ -298,7 +299,7 @@ def listar_documentos_sync(*, cliente: Client | None = None) -> list[DocumentoPe
     while True:
         filas = _ejecutar_rag(lambda: base.schema("public").table("documento").select(
             "id,titulo,drive_id,materia_id,comision,periodo,vigente,estado,indexado_en,"
-            "drive_modified_time,drive_md5_checksum"
+            "drive_modified_time,drive_md5_checksum,tipo_documental"
         ).gt("id", ultimo_id).order("id").limit(500).execute())
         if not filas:
             return documentos
@@ -356,6 +357,45 @@ def contar_fragmentos_documento(documento_id: int, *, cliente: Client | None = N
         raise ErrorRepositorio("No se pudo contar los fragmentos del documento.") from None
 
 
+def obtener_firmas_contenido_documentos(
+    documento_ids: Sequence[int], *, cliente: Client | None = None,
+) -> dict[int, str]:
+    """Compara texto indexado completo, sin vectores, por documento y orden.
+
+    Sólo se usa para resolver programas de varias comisiones. No equipara documentos
+    sin texto ni hace inferencias semánticas. Los errores de conexión son explícitos.
+    """
+    ids = list(dict.fromkeys(documento_ids))
+    for documento_id in ids:
+        _validar_id(documento_id)
+    if not ids:
+        return {}
+    base = _cliente_rag(cliente)
+    fragmentos = {identidad: [] for identidad in ids}
+    ultimo_id = 0
+    while True:
+        filas = _ejecutar_rag(lambda: base.schema("public").table("fragmento").select(
+            "id,documento_id,orden,contenido"
+        ).in_("documento_id", ids).gt("id", ultimo_id).order("id").limit(500).execute())
+        if not filas:
+            break
+        for fila in filas:
+            identidad, documento, orden, contenido = (
+                fila.get("id"), fila.get("documento_id"), fila.get("orden"), fila.get("contenido"),
+            )
+            if (type(identidad) is not int or identidad <= ultimo_id or documento not in fragmentos
+                    or type(orden) is not int or orden <= 0 or not isinstance(contenido, str)):
+                raise ErrorRepositorio("Fragmentos inválidos al comparar programas.")
+            fragmentos[documento].append((orden, identidad, contenido))
+            ultimo_id = identidad
+    firmas = {}
+    for documento, lote in fragmentos.items():
+        texto = " ".join(" ".join(f[2].split()) for f in sorted(lote))
+        if texto.strip():
+            firmas[documento] = hashlib.sha256(texto.encode("utf-8")).hexdigest()
+    return firmas
+
+
 def buscar_fragmentos_similares(
     vector_consulta: Sequence[float],
     *,
@@ -363,6 +403,7 @@ def buscar_fragmentos_similares(
     top_k: int,
     documento_ids: Sequence[int] | None = None,
     cliente: Client | None = None,
+    modalidad: str = "primaria",
 ) -> list[FragmentoRecuperado]:
     validar_vector_rag(vector_consulta)
     if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k <= 0:
@@ -384,8 +425,14 @@ def buscar_fragmentos_similares(
         "p_vigente": aplicados.vigente,
         "p_documento_ids": ids,
     }
+    nombre_rpc = "match_fragmentos"
+    if aplicados.tipo_documental in ("programa", "cronograma"):
+        if modalidad not in ("primaria", "comun", "complementaria"):
+            raise ValueError("Modalidad académica inválida.")
+        nombre_rpc = "match_fragmentos_academicos"
+        parametros.update(p_tipo_documental=aplicados.tipo_documental, p_modalidad=modalidad)
     filas = _ejecutar_rag(
-        lambda: base.schema("public").rpc("match_fragmentos", parametros).execute()
+        lambda: base.schema("public").rpc(nombre_rpc, parametros).execute()
     )
     try:
         return [FragmentoRecuperado.model_validate(fila) for fila in filas]

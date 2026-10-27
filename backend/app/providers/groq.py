@@ -58,19 +58,19 @@ class ProveedorGroq(ProveedorHTTP):
         # errores: es comportamiento observado de la API. Un 413 sin ese código queda
         # como ErrorNoRecuperable.
         if estado == 413 and codigos_de_error(respuesta) & _CODIGOS_DE_CUOTA:
-            return CuotaAgotada(
+            return self._con_estado(CuotaAgotada(
                 f"El proveedor {self.nombre} informó límite de uso (estado HTTP {estado}).",
                 proveedor=self.nombre,
-            )
+            ), estado)
         # 498 es un código propio de Groq: capacidad agotada del servicio («intentar
         # más tarde»). Aunque sea 4xx, es transitorio.
         if estado == 498:
-            return ErrorTemporal(
+            return self._con_estado(ErrorTemporal(
                 f"El proveedor {self.nombre} respondió con el estado HTTP {estado}.",
                 proveedor=self.nombre,
-            )
+            ), estado)
         # 401, 403, 404 y 422 quedan en el mapeo general como ErrorNoRecuperable.
-        return error_por_estado(estado, self.nombre)
+        return self._con_estado(error_por_estado(estado, self.nombre), estado)
 
     def _interpretar(self, datos: dict[str, Any]) -> RespuestaLLM:
         opciones = datos.get("choices")
@@ -84,7 +84,7 @@ class ProveedorGroq(ProveedorHTTP):
         if motivo == "content_filter":
             raise ContenidoBloqueado(
                 f"El proveedor {self.nombre} bloqueó la solicitud por sus filtros ({motivo}).",
-                proveedor=self.nombre,
+                proveedor=self.nombre, causa="bloqueo", detalle="content_filter",
             )
 
         mensaje = opcion.get("message")

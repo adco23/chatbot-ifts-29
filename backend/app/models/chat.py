@@ -57,6 +57,7 @@ class RespuestaChat(ModeloChat):
 
 class CitaTextual(ModeloChat):
     fragmento_id: int = Field(gt=0)
+    documento_id: int | None = Field(default=None, gt=0)
     texto: str = Field(min_length=1, max_length=2000)
 
 

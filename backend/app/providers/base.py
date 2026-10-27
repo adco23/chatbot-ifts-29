@@ -54,9 +54,24 @@ class ErrorProveedor(Exception):
     recuperable: bool = False
     mensaje_por_defecto: str = "Error del proveedor de modelo de lenguaje."
 
-    def __init__(self, mensaje: str | None = None, *, proveedor: str | None = None) -> None:
+    def __init__(
+        self, mensaje: str | None = None, *, proveedor: str | None = None,
+        causa: str = "otra", estado_http: int | None = None, detalle: str | None = None,
+    ) -> None:
         super().__init__(mensaje or self.mensaje_por_defecto)
         self.proveedor = proveedor
+        # Sólo etiquetas cerradas pueden entrar en los logs. Nunca texto remoto.
+        self.causa = causa if isinstance(causa, str) and causa in {
+            "timeout", "http_429", "http_5xx", "http_4xx", "http_otro", "cuota",
+            "conexion", "respuesta_invalida", "solicitud_invalida", "bloqueo", "otra",
+        } else "otra"
+        self.estado_http = estado_http if type(estado_http) is int and 100 <= estado_http <= 599 else None
+        self.detalle = detalle if isinstance(detalle, str) and detalle in {
+            "connect", "read", "write", "pool", "total", "presupuesto_intento", "tls",
+            "estructura", "texto_vacio", "excepcion_inesperada", "MAX_TOKENS", "RECITATION",
+            "LANGUAGE", "OTHER", "STOP", "SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT",
+            "SPII", "content_filter", "length", "stop", "tool_calls", "function_call",
+        } else None
 
 
 class CuotaAgotada(ErrorProveedor):
@@ -81,7 +96,10 @@ class ContenidoBloqueado(ErrorProveedor):
 
 
 class ErrorNoRecuperable(ErrorProveedor):
-    """Solicitud inválida, clave incorrecta o modelo inexistente."""
+    """No reintentar este proveedor: solicitud, clave o modelo inválidos.
+
+    El gestor LLM puede probar otro proveedor; la política de embeddings no cambia.
+    """
 
     recuperable = False
     mensaje_por_defecto = "Error no recuperable del proveedor."

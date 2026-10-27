@@ -38,3 +38,22 @@ def test_no_restringe_configuracion_generica_de_embeddings():
     config = Configuracion(gemini_embedding_dimension=128, embedding_primary="cloudflare")
     assert config.gemini_embedding_dimension == 128
     assert config.cloudflare_embedding_dimension == 1024
+
+
+def test_umbrales_por_tipo_opt_in_no_modifican_general(monkeypatch):
+    config = Configuracion()
+    assert config.rag_umbral_cronograma is config.rag_umbral_programa is None
+    assert config.umbral_rag_para_tipo("cronograma") == config.umbral_rag_para_tipo("programa") == 0.7
+    monkeypatch.setenv("RAG_UMBRAL_CRONOGRAMA", "0.67")
+    monkeypatch.setenv("RAG_UMBRAL_PROGRAMA", "0.72")
+    config = Configuracion()
+    assert config.umbral_rag_para_tipo("cronograma") == 0.67
+    assert config.umbral_rag_para_tipo("programa") == 0.72
+    assert config.umbral_rag_para_tipo("general") == config.umbral_rag_para_tipo(None) == 0.7
+
+
+@pytest.mark.parametrize("campo", ["rag_umbral_cronograma", "rag_umbral_programa"])
+@pytest.mark.parametrize("valor", [-0.1, 1.1, float("nan"), float("inf")])
+def test_umbrales_por_tipo_invalidos(campo, valor):
+    with pytest.raises(ValidationError):
+        Configuracion(**{campo: valor})
