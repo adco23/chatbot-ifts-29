@@ -467,7 +467,7 @@ def test_cli_poc_limita_recuperacion_a_ids_del_corpus_indexado(documento, config
     monkeypatch.setattr(sincronizador, "run_full_sync", AsyncMock(return_value=indexacion))
     recuperar = AsyncMock(
         return_value=ResultadoRecuperacion(
-            fragmentos=[], mejor_similitud=None, confianza=0, umbral=0.7,
+            fragmentos=[], mejor_similitud=None, confianza=0, umbral=0.68,
             evidencia_suficiente=False,
         )
     )

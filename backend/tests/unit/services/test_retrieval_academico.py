@@ -235,7 +235,7 @@ def test_programa_no_satisface_horario_http(http_academico, entorno_academico):
     entorno_academico.llm.generar_con_respaldo.assert_not_called()
 
 
-@pytest.mark.parametrize("override,estado,umbral", [(None, "sin_evidencia", 0.7), (0.67, "respondida", 0.67)])
+@pytest.mark.parametrize("override,estado,umbral", [(None, "sin_evidencia", 0.68), (0.67, "respondida", 0.67)])
 def test_cronograma_f_score_real_respeta_umbral_especifico_sin_inflarlo(
     http_academico, entorno_academico, override, estado, umbral,
 ):
@@ -298,4 +298,4 @@ def test_override_cronograma_no_cambia_umbral_generico(monkeypatch):
     resultado = asyncio.run(recuperador.recuperar_fragmentos(
         "Pregunta general", gestor=gestor(), configuracion=Configuracion(rag_umbral_cronograma=0.67),
     ))
-    assert resultado.umbral == 0.7 and not resultado.evidencia_suficiente
+    assert resultado.umbral == 0.68 and not resultado.evidencia_suficiente

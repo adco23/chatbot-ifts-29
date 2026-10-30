@@ -2,7 +2,7 @@ import hashlib
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any
-
+from datetime import datetime
 from supabase import Client
 
 from app.db.conexion import obtener_cliente_supabase
@@ -59,7 +59,6 @@ def guardar_documento_institucional(
             "vigente": vigente,
             "estado": estado
         }
-        # Forzamos el esquema public explícitamente por si PostgREST no lo resuelve por defecto
         response = supabase.schema("public").table("documento").insert(data).execute()
         return response.data[0] if response.data else None
     except Exception as e:
@@ -146,7 +145,6 @@ def _ejecutar_rag(operacion: Callable[[], Any]) -> list[dict[str, Any]]:
             raise ValueError("Respuesta no tabular.")
         return datos
     except Exception:
-        # No copiar mensajes del cliente: pueden contener payloads o credenciales.
         raise ErrorRepositorio("No se pudo completar la operación de datos RAG.") from None
 
 
@@ -360,11 +358,7 @@ def contar_fragmentos_documento(documento_id: int, *, cliente: Client | None = N
 def obtener_firmas_contenido_documentos(
     documento_ids: Sequence[int], *, cliente: Client | None = None,
 ) -> dict[int, str]:
-    """Compara texto indexado completo, sin vectores, por documento y orden.
-
-    Sólo se usa para resolver programas de varias comisiones. No equipara documentos
-    sin texto ni hace inferencias semánticas. Los errores de conexión son explícitos.
-    """
+    """Compara texto indexado completo, sin vectores, por documento y orden."""
     ids = list(dict.fromkeys(documento_ids))
     for documento_id in ids:
         _validar_id(documento_id)
@@ -417,7 +411,7 @@ def buscar_fragmentos_similares(
         raise ValueError("Se esperaban filtros RAG tipados.")
     base = _cliente_rag(cliente)
     parametros = {
-        "p_query_embedding": list(vector_consulta),
+        "p_query_embedding": str(list(vector_consulta)),
         "p_top_k": top_k,
         "p_materia_id": aplicados.materia_id,
         "p_comision": aplicados.comision,
@@ -438,3 +432,81 @@ def buscar_fragmentos_similares(
         return [FragmentoRecuperado.model_validate(fila) for fila in filas]
     except Exception:
         raise ErrorRepositorio("La respuesta de búsqueda no respeta el contrato RAG.") from None
+
+
+def buscar_en_cache_faq(
+    vector_consulta: Sequence[float],
+    *,
+    materia_id: int | None = None,
+    comision: str | None = None,
+    umbral: float = 0.68,
+    cliente: Client | None = None,
+) -> dict[str, Any] | None:
+    """Busca una pregunta frecuente por similitud semántica y vigencia en Supabase."""
+    validar_vector_rag(vector_consulta)
+    base = _cliente_rag(cliente)
+    
+    parametros = {
+        "p_query_embedding": str(list(vector_consulta)),
+        "p_umbral": float(umbral),
+        "p_materia_id": materia_id,
+        "p_comision": comision,
+    }
+    try:
+        # LLAMADA DIRECTA SIN _ejecutar_rag PARA VER EL ERROR REAL SI LO HAY
+        response = base.schema("public").rpc("match_pregunta_frecuente", parametros).execute()
+        print(f"--- RESPUESTA CRUDA SUPABASE RPC: {response} ---")
+        filas = response.data
+        print(f"--- DATOS CRUDOS FILAS: {filas} ---")
+        return filas[0] if filas else None
+    except Exception as e:
+        print(f"=== ERROR REAL Y EXPLÍCITO EN SUPABASE RPC: {e} ===")
+        import traceback
+        traceback.print_exc()
+        return None
+
+def incrementar_acierto_cache_faq(pregunta_id: int, *, cliente: Client | None = None) -> None:
+    """Incrementa en 1 el contador de aciertos de una pregunta frecuente utilizada."""
+    base = _cliente_rag(cliente)
+    try:
+        base.schema("public").rpc("incrementar_acierto_faq", {"p_id": pregunta_id}).execute()
+    except Exception as e:
+        print(f"Error al incrementar aciertos de caché: {e}")
+
+def calcular_vigencia_hasta() -> str:
+    hoy = datetime.now()
+    anio = hoy.year
+    limite_junio = datetime(anio, 6, 30)
+    if hoy <= limite_junio:
+        return f"{anio}-06-30"
+    else:
+        return f"{anio}-12-31"
+
+def guardar_pregunta_frecuente(
+    pregunta: str,
+    respuesta: str,
+    vector_embedding: list[float],
+    *,
+    materia_id: int | None = None,
+    comision: str | None = None,
+    cliente: Client | None = None,
+) -> None:
+    base = _cliente_rag(cliente)
+    vigencia = calcular_vigencia_hasta()
+    
+    datos = {
+        "pregunta_canonica": pregunta.strip(),
+        "respuesta": respuesta.strip(),
+        "embedding": vector_embedding,
+        "materia_id": materia_id,
+        "comision": comision,
+        "vigencia_hasta": vigencia,
+        "generada_en": datetime.now().isoformat(),  # <--- Agregamos la marca de tiempo aquí
+        "aciertos": 0
+    }
+    
+    try:
+        base.schema("public").table("pregunta_frecuente").insert(datos).execute()
+        print(f"--- ¡AUTO-APRENDIZAJE! Pregunta guardada con vigencia hasta {vigencia} ---")
+    except Exception as e:
+        print(f"=== Error al auto-guardar en caché FAQ: {e} ===")

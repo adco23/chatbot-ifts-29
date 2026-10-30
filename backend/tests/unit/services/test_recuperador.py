@@ -49,13 +49,13 @@ def test_transporta_filtros_ids_y_consulta(monkeypatch):
     assert resultado.evidencia_suficiente
 
 
-@pytest.mark.parametrize("score,suficiente", [(0.699, False), (0.700, True), (0.701, True)])
+@pytest.mark.parametrize("score,suficiente", [(0.67, False), (0.68, True), (0.69, True)])
 def test_umbral_inclusivo_sin_descartar_fragmentos(monkeypatch, score, suficiente):
     resultado, _, _ = ejecutar(monkeypatch, [fragmento(score)])
     assert resultado.evidencia_suficiente is suficiente
     assert len(resultado.fragmentos) == 1
     assert resultado.mejor_similitud == score
-    assert resultado.umbral == 0.70
+    assert resultado.umbral == 0.68
 
 
 def test_sin_resultados_no_hay_evidencia_aun_con_umbral_cero(monkeypatch):

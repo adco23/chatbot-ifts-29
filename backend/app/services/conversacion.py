@@ -4,6 +4,7 @@ import asyncio
 import json
 import re
 from pathlib import Path
+from app.services.cache_faq import procesar_cache_faq
 
 from pydantic import TypeAdapter
 
@@ -126,6 +127,30 @@ async def _conversar(solicitud, config, embeddings, llm):
     if entrada_bloqueada(texto):
         contexto = contexto.model_copy(update={"consulta_pendiente": None})
         return responder("bloqueada", "No puedo procesar esa solicitud.")
+
+    # ----------------------------------------------------
+    # NUEVO: Intercepción por Caché de Preguntas Frecuentes (Bloque 6)
+    # ----------------------------------------------------
+    respuesta_cache = await procesar_cache_faq(
+        mensaje=texto,
+        contexto=contexto.model_dump() if hasattr(contexto, "model_dump") else dict(contexto),
+        gestor_embeddings=embeddings,
+        configuracion=config,
+    )
+    if respuesta_cache:
+        # Si hay acierto en caché, limpiamos pendiente y devolvemos la respuesta de inmediato
+        contexto_actualizado = contexto.model_copy(update={"consulta_pendiente": None})
+        return RespuestaChat(
+            estado=respuesta_cache["estado"],
+            respuesta=respuesta_cache["respuesta"],
+            fuentes=respuesta_cache.get("fuentes", []),
+            confianza=respuesta_cache.get("confianza", 1.0),
+            umbral=respuesta_cache.get("umbral", umbral),
+            advertencia_temporal=advertencia,
+            contexto=contexto_actualizado,
+        )
+    # ----------------------------------------------------
+
     materias = await asyncio.to_thread(repositorio.listar_materias_chat)
     contexto = _resolver_contexto(contexto, texto, materias)
     intencion = clasificar_intencion_documental(texto, config)
@@ -235,9 +260,31 @@ async def _conversar(solicitud, config, embeddings, llm):
             fragmento_ids_primarios=primarios if academica else None,
             documento_ids_permitidos={f.documento_id for f in fragmentos},
         )
+        
         etapa = "fuentes_construccion_error"
         fuentes = await resolver_fuentes(usados)
         registrar_etapa("fuentes_construidas", proveedor=generado.proveedor, cantidad=len(fuentes))
+
+        # ----------------------------------------------------
+        # NUEVO: Auto-aprendizaje de Caché FAQ (Guardado automático)
+        # ----------------------------------------------------
+        try:
+            res_emb = await embeddings.embed_query(texto.strip())
+            vector_nuevo = getattr(res_emb, "vector", None)
+            if vector_nuevo and len(vector_nuevo) == 768:
+                await asyncio.to_thread(
+                    repositorio.guardar_pregunta_frecuente,
+                    pregunta=texto,
+                    respuesta=salida.respuesta,
+                    vector_embedding=vector_nuevo,
+                    materia_id=contexto.materia_id,
+                    comision=contexto.comision,
+                )
+        except Exception as cache_err:
+            # Un fallo en el autoguardado nunca debe interrumpir la respuesta al usuario
+            print(f"=== Error al auto-guardar en caché FAQ: {cache_err} ===")
+        # ----------------------------------------------------
+
         etapa = "respuesta_final_error"
         respuesta = responder("respondida", salida.respuesta, resultado, fuentes=fuentes)
         registrar_etapa("respuesta_final_validada", proveedor=generado.proveedor)

@@ -28,7 +28,7 @@ def recuperacion(filas):
     mejor = max((f.similitud for f in filas), default=None)
     return ResultadoRecuperacion(
         fragmentos=filas, mejor_similitud=mejor, confianza=max(0, min(1, mejor or 0)),
-        umbral=0.7, evidencia_suficiente=mejor is not None and mejor >= 0.7,
+        umbral=0.68, evidencia_suficiente=mejor is not None and mejor >= 0.68,
     )
 
 
@@ -75,7 +75,7 @@ def test_parafrasis_fuentes_prompt_y_gestores(entorno):
     assert json.loads(solicitud.contexto)[0]["fragmento_id"] == 1
 
 
-@pytest.mark.parametrize("score,estado", [(0.699, "sin_evidencia"), (0.7, "respondida")])
+@pytest.mark.parametrize("score,estado", [(0.67, "sin_evidencia"), (0.68, "respondida")])
 def test_umbral(entorno, score, estado):
     entorno.rag.return_value = recuperacion([fragmento(similitud=score)])
     resultado = ejecutar(entorno)

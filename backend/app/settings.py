@@ -111,7 +111,7 @@ class Configuracion(BaseSettings):
 
     # La confianza es una heurística basada en el mejor coseno, no una probabilidad.
     rag_top_k: int = Field(default=5, gt=0, strict=True)
-    rag_umbral_confianza: float = Field(default=0.70, ge=0, le=1, allow_inf_nan=False)
+    rag_umbral_confianza: float = Field(default=0.68, ge=0, le=1, allow_inf_nan=False)
     # Opt-in: calibrar por tipo sin modificar el umbral general ni el score coseno.
     rag_umbral_cronograma: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
     rag_umbral_programa: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
