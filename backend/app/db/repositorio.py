@@ -510,3 +510,8 @@ def guardar_pregunta_frecuente(
         print(f"--- ¡AUTO-APRENDIZAJE! Pregunta guardada con vigencia hasta {vigencia} ---")
     except Exception as e:
         print(f"=== Error al auto-guardar en caché FAQ: {e} ===")
+
+def insertar_faq_masivo(datos: dict, cliente=None) -> None:
+    """Inserta una pregunta frecuente masiva en la base de datos."""
+    base = _cliente_rag(cliente)
+    base.schema("public").table("pregunta_frecuente").insert(datos).execute()

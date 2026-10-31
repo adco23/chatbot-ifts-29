@@ -1,0 +1,398 @@
+[
+  {
+    "pregunta_canonica": "¿Qué tengo que hacer antes de comenzar las clases?",
+    "respuesta": "Antes de comenzar las clases, debés completar el curso de ingreso y familiarización en el campus Moodle, verificar que tus datos estén correctos en el SIU Guaraní y revisar los materiales de arranque publicados para tu carrera.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cómo sé cuál es mi comisión?",
+    "respuesta": "Podés consultar tu comisión asignada ingresando a tu perfil en el campus Moodle o en el sistema SIU Guaraní. También figura en los listados oficiales publicados por Bedelía al inicio del cuatrimestre.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Dónde veo mi horario?",
+    "respuesta": "Los horarios de cursada se publican en el campus Moodle de cada materia, en la sección de cartelería institucional y en los cronogramas oficiales brindados por el instituto.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cuándo empiezan las clases?",
+    "respuesta": "Las fechas de inicio de clases y del ciclo lectivo se rigen por el calendario académico oficial del IFTS 29, el cual podés consultar en la web institucional o en el campus Moodle.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué tengo que hacer el primer día?",
+    "respuesta": "El primer día debés ingresar al campus Moodle en el horario correspondiente a tu comisión para acceder a la bienvenida de los docentes, o asistir de forma presencial según la modalidad de tu carrera.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cómo conozco a mis docentes?",
+    "respuesta": "A los docentes los vas a conocer en la primera clase sincrónica o presencial, y a través de los mensajes de bienvenida y presentación publicados en el aula virtual de Moodle de cada materia.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Dónde encuentro las materias que tengo asignadas?",
+    "respuesta": "Las materias en las que estás inscripto aparecen automáticamente en tu panel principal del campus Moodle y en tu historial académico del SIU Guaraní.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué materiales necesito para comenzar?",
+    "respuesta": "Necesitás una computadora o dispositivo con acceso a internet, conexión al campus Moodle, y los programas o bibliografía específica detallada en el programa de cada materia.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Hay alguna actividad obligatoria durante el curso de familiarización?",
+    "respuesta": "Sí, el curso incluye actividades prácticas orientadas a que aprendas a usar el campus Moodle y a familiarizarte con las herramientas de comunicación del instituto.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué pasa si no puedo completar el curso de familiarización?",
+    "respuesta": "Es altamente recomendable completarlo para no perderte información clave, pero ante cualquier inconveniente particular podés comunicarte con el equipo de Tutoría o Bedelía.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿El curso de familiarización se evalúa con nota?",
+    "respuesta": "El curso cuenta con actividades formativas y de seguimiento para asegurar que manejás las herramientas, pero no otorga una nota numérica que afecte el promedio de la carrera.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿El curso de familiarización es obligatorio?",
+    "respuesta": "Está diseñado como el trayecto inicial fundamental para todos los ingresantes con el fin de garantizar una adaptación exitosa a la cursada.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Dónde puedo consultar las instrucciones del curso?",
+    "respuesta": "Las instrucciones detalladas y el cronograma del curso de ingreso se encuentran en la página principal del campus Moodle para ingresantes.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué hago si no entiendo cómo utilizar Moodle?",
+    "respuesta": "Disponés de tutoriales en video y guías paso a paso dentro de la sección de ayuda del campus, o podés contactar al soporte técnico y a Tutoría.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿A quién recurro si tengo dificultades durante los primeros días?",
+    "respuesta": "Podés recurrir a los tutores académicos del instituto, al equipo de Bedelía o realizar tu consulta a través de los canales de asistencia oficial del IFTS 29.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cuánto porcentaje de asistencia necesito?",
+    "respuesta": "Para mantener la regularidad en las cursadas presenciales o híbridas, generalmente se requiere un mínimo de 75% de asistencia a las clases establecidas por el régimen académico.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué pasa si falto a una clase?",
+    "respuesta": "Se computará la inasistencia correspondiente a esa jornada. Es recomendable que revises los materiales y grabaciones disponibles en Moodle para ponerte al día con tus compañeros.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué pasa si tengo muchas inasistencias?",
+    "respuesta": "Si superás el límite de faltas permitido por el régimen de asistencia, podés perder la condición de alumno regular en la materia y pasar a condición de libre o recursar.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Una clase sincrónica cuenta como asistencia?",
+    "respuesta": "Sí, en las instancias virtuales con encuentros sincrónicos obligatorios, la participación y conexión en el horario pautado se registra como asistencia según indique la cátedra.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cómo se registra la asistencia?",
+    "respuesta": "La asistencia se registra mediante planillas del docente en clases presenciales o a través de registros de conexión y actividades en el campus Moodle para las clases virtuales.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué pasa si tengo un problema personal y no puedo asistir?",
+    "respuesta": "Debés notificar a tus docentes y a Bedelía presentando los certificados o motivos correspondientes para justificar las ausencias prolongadas según las normativas vigentes.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cuánto tiempo puedo dejar de cursar sin perder la regularidad?",
+    "respuesta": "La regularidad se evalúa por cuatrimestre y año lectivo en función de la aprobación de materias y el cumplimiento de los requisitos de cursada fijados por el instituto.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué significa ser alumno regular?",
+    "respuesta": "Ser alumno regular implica cumplir con los requisitos de asistencia y aprobación de instancias evaluativas que te habilitan a cursar y rendir exámenes finales bajo el régimen correspondiente.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿La carrera es presencial, virtual o híbrida?",
+    "respuesta": "El formato de cursada se ajusta a la modalidad específica aprobada para la tecnicatura (presencial o híbrida/virtual), cuyos detalles podés consultar en la propuesta educativa del IFTS 29.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué días y horarios se cursa?",
+    "respuesta": "Los días y franjas horarias de cursada dependen de la carrera elegida y de tu comisión asignada, información detallada en los cronogramas oficiales de la institución.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Las clases sincrónicas son obligatorias?",
+    "respuesta": "Sí, en las materias que contemplan encuentros virtuales sincrónicos, la participación en vivo es fundamental para el seguimiento pedagógico y el cumplimiento de la asistencia.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué pasa si não puedo asistir a una clase sincrónica?",
+    "respuesta": "Deberás avisar a la cátedra y revisar las grabaciones o materiales complementarios que el docente suba al aula virtual de Moodle.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Las clases quedan grabadas?",
+    "respuesta": "Siempre que la cátedra lo disponga y la plataforma lo permita, las clases sincrónicas pueden ser grabadas y compartidas en el campus Moodle.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Dónde puedo encontrar las grabaciones?",
+    "respuesta": "Las grabaciones de las clases se publican dentro de la sección correspondiente a cada materia en el campus Moodle.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cuántas horas por semana tengo que dedicarle al estudio?",
+    "respuesta": "Además de las horas de clase obligatorias, se recomienda destinar horas adicionales de estudio independiente, lectura y práctica para cada materia.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Hay actividades para realizar fuera del horario de clase?",
+    "respuesta": "Sí, los docentes asignan trabajos prácticos, lecturas y tareas que deben resolverse de manera autónoma a través del campus Moodle.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cómo sé qué actividades tengo pendientes?",
+    "respuesta": "Podés ver todas tus tareas, entregas y fechas límite en el calendario y el panel de notificaciones de tu perfil en Moodle.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué pasa si no entrego una actividad?",
+    "respuesta": "La falta de entrega de actividades obligatorias puede afectar tu nota de concepto, tu seguimiento académico o el cumplimiento de los requisitos de aprobación de la cursada.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Puedo cursar si trabajo?",
+    "respuesta": "Sí, las carreras del IFTS 29 están pensadas para facilitar la compatibilidad con horarios laborales, concentrándose generalmente en el turno nocturno o en modalidades adaptadas.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cómo se organiza la cursada cuando hay feriados?",
+    "respuesta": "Las clases correspondientes a días feriados nacionales o asuetos no se dictan y las actividades se reprograman según lo indique cada cátedra o el calendario oficial.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cuánto dura la carrera?",
+    "respuesta": "Las tecnicaturas superiores en el IFTS 29 tienen una duración estimada de 3 años estructurados en seis cuatrimestres.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué título obtengo al finalizar?",
+    "respuesta": "Al completar satisfactoriamente todas las materias y requisitos del plan de estudios, obtenés el título oficial de Técnico Superior correspondiente a la carrera cursada.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿El título es oficial?",
+    "respuesta": "Sí, los títulos emitidos por el IFTS 29 tienen validez oficial y reconocimiento en el ámbito educativo y profesional.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Dónde puedo consultar el plan de estudios?",
+    "respuesta": "El plan de estudios completo con el detalle de todas las materias se encuentra disponible en la web oficial del instituto y en los documentos orientativos de la carrera.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué materias tengo que cursar primero?",
+    "respuesta": "Debés seguir el orden sugerido por el plan de estudios para el primer año, respetando las correlatividades establecidas para cada cuatrimestre.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Hay materias correlativas?",
+    "respuesta": "Sí, el régimen de correlatividades indica qué materias es necesario tener aprobadas o cursadas para poder inscribirte a las asignaturas de niveles superiores.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué pasa si desapruebo una materia?",
+    "respuesta": "Dependiendo de si se trata de una instancia de cursada o de examen final, podrás recuperar, rendir en turnos posteriores o recursar la materia según la normativa vigente.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Puedo recursar una materia?",
+    "respuesta": "Sí, en caso de no haber alcanzado la aprobación o regularidad, podés volver a cursar la materia en el ciclo lectivo habilitado.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Puedo cambiarme de comisión?",
+    "respuesta": "Los cambios de comisión son excepcionales y están sujetos a disponibilidad de cupos y a la autorización formal por parte del área de Bedelía.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Puedo cursar materias de distintos años?",
+    "respuesta": "Siempre que cumplas estrictamente con el régimen de correlatividades y no se te superpongan los horarios de cursada, podés avanzar combinando materias.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cómo contacto a un docente?",
+    "respuesta": "Podés contactar a los docentes a través de la mensajería interna del campus Moodle o mediante los foros de consulta habilitados en cada aula virtual.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cuánto tarda un docente en responder?",
+    "respuesta": "Los docentes suelen responder dentro de los días hábiles y horarios asignados a la cátedra, según las pautas de comunicación establecidas al inicio de la cursada.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Dónde puedo hacer una consulta sobre una actividad?",
+    "respuesta": "Las consultas sobre actividades deben realizarse en los foros específicos de cada clase o tarea dentro del aula virtual de Moodle.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿A quién consulto si tengo un problema con una materia?",
+    "respuesta": "Primero debés consultarlo con el docente de la materia, y si persiste el inconveniente, podés acudir al coordinador de carrera, tutores o a Bedelía.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué diferencia hay entre una consulta académica y una administrativa?",
+    "respuesta": "La consulta académica se relaciona con los contenidos, clases y docentes de las materias; la administrativa involucra trámites de inscripción, certificados, legajos y bedelía.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿A quién tengo que recurrir si tengo un problema con la cursada?",
+    "respuesta": "Debés contactarte con el equipo de Tutoría institucional o con el departamento de Bedelía según corresponda a la índole de tu situación.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cómo puedo comunicarme con el instituto?",
+    "respuesta": "Podés comunicarte a través de los canales oficiales de contacto publicados en la web institucional y mediante las vías de atención de Bedelía.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cómo solicito un certificado de alumno regular?",
+    "respuesta": "El certificado de alumno regular se solicita de forma digital a través del sistema SIU Guaraní en los períodos habilitados por el calendario académico.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cómo actualizo mis datos personales?",
+    "respuesta": "Podés actualizar tus datos personales ingresando con tu usuario al sistema SIU Guaraní en la sección de gestión de perfil.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cómo hago si cambié mi correo electrónico?",
+    "respuesta": "Debes actualizar tu dirección de correo electrónico directamente desde la configuración de tu perfil en el SIU Guaraní y notificar a soporte o bedelía si fuera necesario.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Dónde consulto el calendario académico?",
+    "respuesta": "El calendario académico oficial se publica en la página web del IFTS 29 y en la sección principal del campus Moodle al comenzar cada ciclo lectivo.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Dónde puedo consultar las fechas importantes del cuatrimestre?",
+    "respuesta": "Las fechas clave de exámenes, inscripciones y recesos figuran detalladas en el calendario académico oficial de la institución.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cómo me inscribo a una materia?",
+    "respuesta": "La inscripción a materias se realiza exclusivamente de manera online a través de la plataforma SIU Guaraní en las fechas establecidas por el calendario académico.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Cómo me inscribo a un examen?",
+    "respuesta": "Te inscribís a los exámenes finales desde tu usuario en el SIU Guaraní dentro del período de inscripción correspondiente a cada llamado.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué hago si tengo un problema con mi inscripción?",
+    "respuesta": "Debés reportar el inconveniente a Bedelía adjuntando captura de pantalla y tus datos personales antes de que cierre el período de inscripción.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Me tengo que inscribir a finales si la materia la promocioné?",
+    "respuesta": "No, si cumpliste con todos los requisitos de promoción directa de la materia, la aprobación se registra internamente sin necesidad de inscribirte a mesa de examen final.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Necesito una computadora para cursar?",
+    "respuesta": "Sí, contar con una computadora es altamente recomendable y necesario para el normal desarrollo de las prácticas de programación, el acceso a Moodle y la entrega de trabajos.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Puedo cursar solamente con el celular?",
+    "respuesta": "Si bien el celular sirve para lecturas o notificaciones rápidas, no es suficiente para realizar las prácticas de desarrollo de software ni para la redacción y entrega de trabajos prácticos complejos.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué programas necesito instalar?",
+    "respuesta": "Los programas específicos (editores de código, bases de datos, entornos de desarrollo) se indican en los requerimientos de cada materia técnica al iniciar las clases.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué hago si mi computadora no tiene los requisitos necesarios?",
+    "respuesta": "Debés consultar con los docentes o tutores para evaluar alternativas de software liviano o herramientas web que te permitan realizar las prácticas de la materia.",
+    "materia_id": null,
+    "comision": null
+  },
+  {
+    "pregunta_canonica": "¿Qué hago si tengo problemas de conexión durante un examen?",
+    "respuesta": "Tenés que dar aviso inmediato a tu docente por el medio alternativo disponible (como WhatsApp o correo de urgencia) y reportarlo a soporte técnico o Bedelía.",
+    "materia_id": null,
+    "comision": null
+  }
+]
