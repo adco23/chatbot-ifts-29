@@ -37,6 +37,20 @@ SIN_EVIDENCIA = (
 class ErrorConversacion(RuntimeError):
     """Fallo técnico cuyo detalle público nunca contiene payloads."""
 
+def normalizar_materia_por_sinonimo(texto_usuario: str) -> str:
+    """Mapea abreviaturas y sinónimos comunes al nombre oficial de la materia."""
+    texto = texto_usuario.lower()
+    
+    if any(k in texto for k in ["tp", "tecnicas de programacion", "técnicas de programación", "tecnicas"]):
+        return "Técnicas de Programación"
+    if any(k in texto for k in ["bd", "base de datos", "bases de datos", "administracion de bases de datos"]):
+        return "Administración de Bases de Datos"
+    if any(k in texto for k in ["analisis", "matematica", "análisis matemático", "elementos de analisis matematico"]):
+        return "Elementos de Análisis Matemático"
+    if any(k in texto for k in ["logica", "computacional", "lógica computacional"]):
+        return "Lógica Computacional"
+        
+    return texto_usuario
 
 def _coincide(documento, filtros):
     if filtros.materia_id is not None and documento.materia_id not in (None, filtros.materia_id):
@@ -152,7 +166,8 @@ async def _conversar(solicitud, config, embeddings, llm):
     # ----------------------------------------------------
 
     materias = await asyncio.to_thread(repositorio.listar_materias_chat)
-    contexto = _resolver_contexto(contexto, texto, materias)
+    texto_con_sinonimo = normalizar_materia_por_sinonimo(texto)
+    contexto = _resolver_contexto(contexto, texto_con_sinonimo, materias)
     intencion = clasificar_intencion_documental(texto, config)
     academica = intencion in ("programa", "cronograma")
     
@@ -170,7 +185,7 @@ async def _conversar(solicitud, config, embeddings, llm):
         tipo_documental=intencion if academica else None,
     )
     faltantes = [campo for campo in ("materia_id", "comision") if getattr(contexto, campo) is None]
-    
+
     async def recuperar(ids=None):
         return await recuperar_fragmentos(
             texto, filtros=filtros, documento_ids=ids,
