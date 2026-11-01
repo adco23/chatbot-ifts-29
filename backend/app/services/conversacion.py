@@ -155,13 +155,22 @@ async def _conversar(solicitud, config, embeddings, llm):
     contexto = _resolver_contexto(contexto, texto, materias)
     intencion = clasificar_intencion_documental(texto, config)
     academica = intencion in ("programa", "cronograma")
+    
+    # ----------------------------------------------------
+    # FIX: Si la consulta es institucional general, nunca debe tratarse como académica ni requerir materia
+    from app.services.intencion_documental import requiere_materia_por_consulta
+    if not requiere_materia_por_consulta(texto):
+        academica = False
+        intencion = None
+    # ----------------------------------------------------
+
     umbral = config.umbral_rag_para_tipo(intencion) if academica else config.rag_umbral_confianza
     filtros = FiltrosRecuperacion(
         materia_id=contexto.materia_id, comision=contexto.comision, periodo=contexto.periodo,
         tipo_documental=intencion if academica else None,
     )
     faltantes = [campo for campo in ("materia_id", "comision") if getattr(contexto, campo) is None]
-
+    
     async def recuperar(ids=None):
         return await recuperar_fragmentos(
             texto, filtros=filtros, documento_ids=ids,

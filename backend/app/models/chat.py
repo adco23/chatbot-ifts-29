@@ -63,7 +63,7 @@ class CitaTextual(ModeloChat):
 
 class SalidaGenerador(ModeloChat):
     respuesta: str = Field(min_length=1, max_length=8000)
-    fragmento_ids: list[int] = Field(min_length=1, max_length=50)
+    fragmento_ids: list[int] = Field(default_factory=list, min_length=0, max_length=50)
     citas_textuales: list[CitaTextual] = Field(default_factory=list, max_length=50)
 
 

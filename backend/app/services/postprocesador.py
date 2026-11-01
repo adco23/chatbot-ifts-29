@@ -88,6 +88,14 @@ def validar_generacion(
     if bloque:
         limpio = bloque[1].strip()
         normalizaciones.append("bloque_json")
+
+    # Tolerancia extra: si quedó texto conversacional alrededor, extraemos el JSON
+    match_json = re.search(r"\{[\s\S]*\}", limpio)
+    if match_json:
+        limpio = match_json.group(0)
+        if "bloque_json" not in normalizaciones:
+            normalizaciones.append("extraccion_json")
+
     try:
         datos = json.loads(limpio, object_pairs_hook=_objeto_sin_duplicados,
                            parse_constant=_constante_invalida)
@@ -100,6 +108,15 @@ def validar_generacion(
     if isinstance(datos, dict):
         if isinstance(datos.get("respuesta"), str):
             datos["respuesta"] = sanitizar_texto(datos["respuesta"])
+
+        # Asegurar campos mínimos si el modelo los omitió
+        if "fragmento_ids" not in datos or datos.get("fragmento_ids") is None:
+            datos["fragmento_ids"] = []
+            normalizaciones.append("fragmentos_nulos")
+        if "citas_textuales" not in datos or datos.get("citas_textuales") is None:
+            datos["citas_textuales"] = []
+            normalizaciones.append("citas_nulas")
+
         referencias = datos.get("fragmento_ids")
         if isinstance(referencias, list):
             ids = []
@@ -120,9 +137,6 @@ def validar_generacion(
                 else:
                     ids.append(_id_canonico(referencia))
             datos["fragmento_ids"] = ids
-        if datos.get("citas_textuales", []) is None:
-            datos["citas_textuales"] = []
-            normalizaciones.append("citas_nulas")
         if isinstance(datos.get("citas_textuales"), list):
             for cita in datos["citas_textuales"]:
                 if isinstance(cita, dict):

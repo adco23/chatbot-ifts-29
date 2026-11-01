@@ -439,7 +439,7 @@ def buscar_en_cache_faq(
     *,
     materia_id: int | None = None,
     comision: str | None = None,
-    umbral: float = 0.68,
+    umbral: float = 0.75,
     cliente: Client | None = None,
 ) -> dict[str, Any] | None:
     """Busca una pregunta frecuente por similitud semántica y vigencia en Supabase."""

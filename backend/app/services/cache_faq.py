@@ -31,8 +31,8 @@ async def procesar_cache_faq(
         raw_comision = contexto.get("comision")
         comision = str(raw_comision).strip() if raw_comision not in (None, "") else None
 
-        # Umbral semántico real de producción (configurable o 0.68 por defecto)
-        umbral = getattr(configuracion, "UMBRAL_CACHE_FAQ", 0.68)
+        # Umbral semántico real de producción (configurable o 0.75 por defecto)
+        umbral = getattr(configuracion, "UMBRAL_CACHE_FAQ", 0.75)
 
         # 2. Buscar en la base de datos de preguntas frecuentes por similitud semántica
         resultado_cache = buscar_en_cache_faq(
