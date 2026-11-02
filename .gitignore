@@ -96,3 +96,9 @@ backend/descargas/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ============================================
+# Otros
+# ============================================
+.claude/*
+CLAUDE.md

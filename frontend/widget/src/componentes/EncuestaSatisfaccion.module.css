@@ -1,0 +1,113 @@
+.encuesta {
+  display: grid;
+  gap: var(--espacio-2);
+}
+
+.texto {
+  margin: 0;
+}
+
+.grupo {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.pregunta {
+  margin-bottom: var(--espacio-2);
+  padding: 0;
+}
+
+.puntajes {
+  display: flex;
+  gap: var(--espacio-2);
+}
+
+.puntaje {
+  position: relative;
+}
+
+/* El radio queda accesible pero invisible; el número es la parte visible. */
+.puntaje input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.puntaje span[aria-hidden] {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--color-azul);
+  border-radius: 50%;
+  background: var(--color-blanco);
+  color: var(--color-azul);
+  font-weight: 700;
+}
+
+.puntaje input:checked + span {
+  background: var(--color-azul);
+  color: var(--color-blanco);
+}
+
+.puntaje input:focus-visible + span {
+  outline: 3px solid var(--color-foco);
+  outline-offset: 2px;
+}
+
+.extremos {
+  display: flex;
+  justify-content: space-between;
+  max-width: 212px;
+  margin-top: 2px;
+  font-size: var(--texto-xs);
+  color: var(--color-texto-suave);
+}
+
+.etiqueta {
+  font-size: var(--texto-sm);
+}
+
+.comentario {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--color-borde-campo);
+  border-radius: 8px;
+  background: var(--color-blanco);
+  font-size: 1rem;
+  resize: vertical;
+}
+
+.acciones {
+  display: flex;
+  gap: var(--espacio-2);
+}
+
+.enviar,
+.omitir {
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: var(--texto-sm);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.enviar {
+  border: 0;
+  background: var(--color-azul);
+  color: var(--color-blanco);
+}
+
+.enviar:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.omitir {
+  border: 1px solid var(--color-azul);
+  background: var(--color-blanco);
+  color: var(--color-azul);
+}

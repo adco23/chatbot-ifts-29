@@ -1,0 +1,35 @@
+.selector {
+  margin-top: var(--espacio-2);
+}
+
+.opciones {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espacio-2);
+}
+
+.opcion {
+  padding: 8px 12px;
+  border: 1px solid var(--color-azul);
+  border-radius: 10px;
+  background: var(--color-blanco);
+  color: var(--color-azul);
+  font-size: var(--texto-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.opcion:hover:not(:disabled) {
+  background: #eaf1fb;
+}
+
+.opcion:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ayuda {
+  margin: var(--espacio-2) 0 0;
+  font-size: var(--texto-xs);
+  color: var(--color-texto-suave);
+}

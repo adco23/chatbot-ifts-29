@@ -1,0 +1,131 @@
+.panel {
+  /* Contenedor de consultas: la barra de temas se adapta al alto del panel. */
+  container: panel-chat / size;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radio-panel);
+  background: var(--color-fondo-cuerpo);
+  box-shadow: var(--sombra-panel);
+}
+
+.panel[hidden] {
+  display: none;
+}
+
+.encabezado {
+  display: flex;
+  align-items: center;
+  gap: var(--espacio-3);
+  padding: var(--espacio-3) var(--espacio-3) var(--espacio-3) var(--espacio-4);
+  border-bottom: 3px solid var(--color-turquesa);
+  background: var(--color-marino);
+  color: var(--color-blanco);
+}
+
+.titulo {
+  flex: 1;
+  margin: 0;
+  font-size: var(--texto-md);
+  font-weight: 700;
+}
+
+.finalizar {
+  padding: 4px 12px;
+  border: 1px solid rgb(255 255 255 / 70%);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-blanco);
+  font-size: var(--texto-sm);
+  cursor: pointer;
+}
+
+.finalizar:hover:not(:disabled) {
+  background: rgb(255 255 255 / 12%);
+}
+
+.finalizar:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.finalizar:focus-visible {
+  outline-color: var(--color-turquesa);
+}
+
+.cerrar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-blanco);
+  cursor: pointer;
+}
+
+.cerrar:hover {
+  background: rgb(255 255 255 / 12%);
+}
+
+.cerrar:focus-visible {
+  outline-color: var(--color-turquesa);
+}
+
+/* Aviso de privacidad + mensajes: se desplazan juntos. */
+.desplazable {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.mensajes {
+  margin: 0;
+  padding: var(--espacio-4) var(--espacio-3) var(--espacio-1);
+  list-style: none;
+}
+
+.pie {
+  display: flex;
+  gap: var(--espacio-2);
+  padding: var(--espacio-3);
+  border-top: 1px solid var(--color-borde);
+  background: var(--color-blanco);
+}
+
+.campo {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-borde-campo);
+  border-radius: 8px;
+  background: var(--color-blanco);
+  /* 16 px evita el zoom automático de iOS al enfocar el campo. */
+  font-size: 1rem;
+}
+
+.campo::placeholder {
+  color: var(--color-texto-suave);
+}
+
+.enviar {
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--color-azul);
+  color: var(--color-blanco);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.enviar:hover:not(:disabled) {
+  background: var(--color-azul-hover);
+}
+
+.enviar:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}

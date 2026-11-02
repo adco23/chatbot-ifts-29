@@ -1,0 +1,42 @@
+.lanzador {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--lanzador-tamano);
+  height: var(--lanzador-tamano);
+  padding: 0;
+  border: var(--lanzador-aro) solid var(--color-turquesa);
+  border-radius: 50%;
+  background: var(--color-marino);
+  color: var(--color-blanco);
+  box-shadow: var(--sombra-suave);
+  cursor: pointer;
+  transition: background-color var(--duracion) ease;
+}
+
+/* Sin escalar: el lanzador no debe superar los 40 px. */
+.lanzador:hover {
+  background: #21445a;
+}
+
+.lanzador:focus-visible {
+  outline-offset: 3px;
+}
+
+.insignia {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: grid;
+  place-items: center;
+  min-width: var(--insignia-tamano);
+  height: var(--insignia-tamano);
+  padding: 0 3px;
+  border: 1.5px solid var(--color-blanco);
+  border-radius: 999px;
+  background: var(--color-naranja);
+  color: var(--color-blanco);
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1;
+}
