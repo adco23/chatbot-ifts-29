@@ -7,6 +7,8 @@ from app.db import repositorio
 from app.models.rag import FiltrosRecuperacion, ResultadoRecuperacion
 from app.providers.embeddings.dependencias import obtener_gestor_embeddings
 from app.providers.embeddings.gestor import GestorEmbeddings
+from app.providers.embeddings.base import ResultadoEmbedding
+from app.services.eventos_cronograma import consulta_dirigida, identificar_evento, respalda_evento
 from app.services.validacion_embeddings_rag import (
     validar_configuracion_rag,
     validar_resultado_consulta,
@@ -56,24 +58,42 @@ def _es_complementario(fragmento, filtros):
     return True
 
 
-async def _recuperar_academico(vector, filtros, limite, ids, config):
+async def _recuperar_academico(vector, filtros, limite, ids, config, *, evento=None, gestor=None):
     def resumir(primarios, complementarios=()):
         return _resultado(primarios, config, complementarios, academico=True,
                           tipo_documental=filtros.tipo_documental)
 
-    async def buscar(modalidad, cantidad=limite):
+    async def buscar(modalidad, cantidad=limite, *, vector_busqueda=None):
         filas = await asyncio.to_thread(
-            repositorio.buscar_fragmentos_similares, vector, filtros=filtros,
+            repositorio.buscar_fragmentos_similares,
+            vector if vector_busqueda is None else vector_busqueda, filtros=filtros,
             top_k=cantidad, documento_ids=ids, modalidad=modalidad,
         )
         if modalidad != "complementaria":
             filas = [f for f in filas if _es_primario(f, filtros, modalidad)]
+            if evento is not None:
+                filas = [f for f in filas if respalda_evento(f.contenido, evento)]
         else:
             filas = [f for f in filas if _es_complementario(f, filtros)]
+            if evento is not None:
+                filas = [f for f in filas if f.tipo_documental == "general"
+                         or respalda_evento(f.contenido, evento)]
         return _ordenar(filas, cantidad)
 
     modalidad = "comun" if filtros.tipo_documental == "programa" and not filtros.comision else "primaria"
-    primarios = await buscar(modalidad)
+    candidatos = max(limite, 20) if evento is not None else limite
+    primarios = _ordenar(await buscar(modalidad, candidatos), limite)
+    if evento is not None and not resumir(primarios).evidencia_suficiente:
+        # Un segundo vector transitorio. Nunca reemplaza el embedding original de la FAQ.
+        dirigido = await gestor.embed_query(consulta_dirigida(evento))
+        validar_resultado_consulta(dirigido)
+        adicionales = _ordenar(await buscar(modalidad, candidatos,
+                                           vector_busqueda=dirigido.vector), limite)
+        anterior = resumir(primarios).mejor_similitud
+        nuevo = resumir(adicionales).mejor_similitud
+        if nuevo is not None and (anterior is None or nuevo >= anterior):
+            primarios = adicionales
+            vector = dirigido.vector
     if filtros.tipo_documental == "programa" and filtros.comision:
         if not resumir(primarios).evidencia_suficiente:
             comunes = await buscar("comun")
@@ -95,6 +115,7 @@ async def recuperar_fragmentos(
     documento_ids: Sequence[int] | None = None,
     gestor: GestorEmbeddings | None = None,
     configuracion: Configuracion | None = None,
+    embedding_consulta: ResultadoEmbedding | None = None,
 ) -> ResultadoRecuperacion:
     if not isinstance(texto, str) or not texto.strip():
         raise ValueError("La consulta no puede estar vacía.")
@@ -112,10 +133,13 @@ async def recuperar_fragmentos(
     ):
         raise ValueError("Los identificadores de documento deben ser enteros positivos.")
     generador = gestor if gestor is not None else obtener_gestor_embeddings()
-    resultado = await generador.embed_query(texto.strip())
+    resultado = (embedding_consulta if embedding_consulta is not None
+                 else await generador.embed_query(texto.strip()))
     validar_resultado_consulta(resultado)
     if aplicados.tipo_documental in ("programa", "cronograma"):
-        return await _recuperar_academico(resultado.vector, aplicados, limite, ids, config)
+        evento = identificar_evento(texto) if aplicados.tipo_documental == "cronograma" else None
+        return await _recuperar_academico(resultado.vector, aplicados, limite, ids, config,
+                                         evento=evento, gestor=generador)
     fragmentos = await asyncio.to_thread(
         repositorio.buscar_fragmentos_similares,
         resultado.vector,

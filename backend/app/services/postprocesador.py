@@ -9,6 +9,9 @@ from pydantic import ValidationError
 from app.models.chat import SalidaGenerador
 from app.services.sanitizador import sanitizar_texto
 from app.services.temporalidad import fechas_respaldadas
+from app.services.eventos_cronograma import (
+    ErrorEvento, identificar_evento, validar_eventos_mencionados, validar_respuesta_evento,
+)
 
 logger = logging.getLogger(__name__)
 _CLAVES = {"respuesta", "fragmento_ids", "citas_textuales"}
@@ -65,7 +68,7 @@ def _ids_seguros(valores):
 
 def validar_generacion(
     texto, fragmentos, *, proveedor=None, fragmento_ids_primarios=None,
-    documento_ids_permitidos=None,
+    documento_ids_permitidos=None, consulta=None,
 ):
     disponibles = {f.fragmento_id: f for f in fragmentos}
     permitidos = _ids_seguros(list(disponibles))
@@ -88,14 +91,6 @@ def validar_generacion(
     if bloque:
         limpio = bloque[1].strip()
         normalizaciones.append("bloque_json")
-
-    # Tolerancia extra: si quedó texto conversacional alrededor, extraemos el JSON
-    match_json = re.search(r"\{[\s\S]*\}", limpio)
-    if match_json:
-        limpio = match_json.group(0)
-        if "bloque_json" not in normalizaciones:
-            normalizaciones.append("extraccion_json")
-
     try:
         datos = json.loads(limpio, object_pairs_hook=_objeto_sin_duplicados,
                            parse_constant=_constante_invalida)
@@ -108,15 +103,6 @@ def validar_generacion(
     if isinstance(datos, dict):
         if isinstance(datos.get("respuesta"), str):
             datos["respuesta"] = sanitizar_texto(datos["respuesta"])
-
-        # Asegurar campos mínimos si el modelo los omitió
-        if "fragmento_ids" not in datos or datos.get("fragmento_ids") is None:
-            datos["fragmento_ids"] = []
-            normalizaciones.append("fragmentos_nulos")
-        if "citas_textuales" not in datos or datos.get("citas_textuales") is None:
-            datos["citas_textuales"] = []
-            normalizaciones.append("citas_nulas")
-
         referencias = datos.get("fragmento_ids")
         if isinstance(referencias, list):
             ids = []
@@ -137,6 +123,9 @@ def validar_generacion(
                 else:
                     ids.append(_id_canonico(referencia))
             datos["fragmento_ids"] = ids
+        if datos.get("citas_textuales", []) is None:
+            datos["citas_textuales"] = []
+            normalizaciones.append("citas_nulas")
         if isinstance(datos.get("citas_textuales"), list):
             for cita in datos["citas_textuales"]:
                 if isinstance(cita, dict):
@@ -179,4 +168,17 @@ def validar_generacion(
     if not fechas_respaldadas(salida.respuesta, contenidos):
         _rechazar("fechas_invalidas", "fecha_no_respaldada", proveedor)
     registrar_etapa("fechas_validas", proveedor=proveedor)
+    evento = identificar_evento(consulta) if consulta is not None else None
+    cronograma = any(f.tipo_documental == "cronograma" for f in fragmentos)
+    if evento is not None or cronograma:
+        try:
+            if evento is not None:
+                validar_respuesta_evento(salida.respuesta, contenidos, evento)
+            else:
+                validar_eventos_mencionados(salida.respuesta, contenidos)
+        except ErrorEvento as error:
+            _rechazar("eventos_invalidos", str(error), proveedor)
+        registrar_etapa("evento_validado", proveedor=proveedor,
+                        tipo=evento.tipo if evento is not None else "general",
+                        numero=evento.numero if evento is not None else None)
     return salida, [disponibles[i] for i in usados]

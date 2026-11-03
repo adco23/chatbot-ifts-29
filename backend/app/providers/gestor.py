@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import math
+import random
 import time
 from collections.abc import Sequence
 
@@ -41,7 +42,7 @@ class GestorProveedores:
 
     def __init__(
         self, proveedores: Sequence[ProveedorLLM], presupuesto_segundos: float,
-        *, reintentos_principal: int = 1, backoff_segundos: float = 0.25,
+        *, reintentos_principal: int = 1, backoff_segundos: float = 1.0,
         motivo_groq_omitido: str | None = None,
     ) -> None:
         if not math.isfinite(presupuesto_segundos) or presupuesto_segundos <= 0:
@@ -108,8 +109,10 @@ class GestorProveedores:
                 if disponible <= 0:
                     break
                 pendientes = intentos - intento
-                if pendientes and disponible > self._backoff_segundos:
-                    limite = (disponible - self._backoff_segundos) / (pendientes + 1)
+                # Reservar el jitter máximo antes de repartir el tiempo entre intentos.
+                espera_maxima = min(2.0, self._backoff_segundos * 2 ** (intento - 1) * 1.2)
+                if pendientes and disponible > espera_maxima:
+                    limite = (disponible - espera_maxima) / (pendientes + 1)
                 else:
                     limite = disponible
                 timeout = self._timeout_de(proveedor)
@@ -142,12 +145,13 @@ class GestorProveedores:
                     if not error.recuperable and not isinstance(error, ErrorNoRecuperable):
                         raise
                     errores.append(error)
-                    if (isinstance(error, ErrorTemporal) and pendientes
-                            and plazo_proveedor - time.monotonic() > self._backoff_segundos):
-                        logger.info("Se reintenta el proveedor %s después de %.2f s.",
-                                    proveedor.nombre, self._backoff_segundos)
-                        await asyncio.sleep(self._backoff_segundos)
-                        continue
+                    if isinstance(error, ErrorTemporal) and pendientes:
+                        espera = self._espera_reintento(intento)
+                        if plazo_proveedor - time.monotonic() > espera:
+                            logger.info("Se reintenta el proveedor %s después de %.2f s.",
+                                        proveedor.nombre, espera)
+                            await asyncio.sleep(espera)
+                            continue
                     # 429/cuota y fallos permanentes no se reintentan en este proveedor.
                     break
                 logger.info("El proveedor %s respondió en %.2f s (intento=%d).",
@@ -165,6 +169,11 @@ class GestorProveedores:
             logger.warning("Groq omitido: presupuesto insuficiente (restante=%.3f s).",
                            plazo_global - time.monotonic())
         raise TodosLosProveedoresFallaron(errores)
+
+    def _espera_reintento(self, intento: int) -> float:
+        """Backoff exponencial con jitter de ±20 %, limitado a dos segundos."""
+        return min(2.0, self._backoff_segundos * 2 ** (intento - 1)
+                   * random.uniform(0.8, 1.2))
 
     @staticmethod
     def _timeout_de(proveedor: ProveedorLLM) -> float | None:

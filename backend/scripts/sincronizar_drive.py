@@ -24,10 +24,12 @@ def crear_analizador():
 async def _ejecutar(argumentos):
     from app.db import repositorio
     from app.providers.embeddings.dependencias import obtener_gestor_embeddings
+    from app.providers.dependencias import obtener_gestor_proveedores
     from app.services.recuperador import recuperar_fragmentos
     from app.services.sincronizador import SincronizacionEnCurso, sincronizar_drive_completo
 
     gestor = None
+    gestor_llm = None
     try:
         if argumentos.comando == "validar-nombres":
             from app.drive.cliente import listar_documentos_sincronizables
@@ -58,6 +60,7 @@ async def _ejecutar(argumentos):
         if argumentos.comando == "ejecutar":
             # Se usa el gestor central; no se crean adaptadores independientes.
             gestor = obtener_gestor_embeddings()
+            gestor_llm = obtener_gestor_proveedores()
             resumen = await sincronizar_drive_completo(gestor=gestor)
             print(resumen.model_dump_json(indent=2))
             return 0 if resumen.estado == "ok" else 1
@@ -98,8 +101,8 @@ async def _ejecutar(argumentos):
               file=sys.stderr)
         return 1
     finally:
-        if gestor is not None:
-            for proveedor in gestor.proveedores:
+        for central in (gestor, gestor_llm):
+            for proveedor in getattr(central, "proveedores", ()):
                 cerrar = getattr(proveedor, "aclose", None)
                 if cerrar is not None:
                     try:

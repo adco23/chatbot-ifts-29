@@ -51,7 +51,7 @@ def test_recuperatorios_usa_umbral_configurado_y_cronograma_f(
         contenido="Semana 16. Recuperatorios. Inicia el 25/11.",
     )
     entorno_academico.llm.generar_con_respaldo.return_value = RespuestaLLM(
-        json.dumps({"respuesta": "Los recuperatorios inician el 25 de noviembre.", "fragmento_ids": [1]}),
+        json.dumps({"respuesta": "Los recuperatorios corresponden a la semana 16, que inicia el 25 de noviembre.", "fragmento_ids": [1]}),
         "groq", "simulado",
     )
     respuesta = preguntar(http_academico, "Cuando son los recuperatorios de Tecnicas de Programacion comision F?")

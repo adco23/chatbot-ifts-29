@@ -3,12 +3,13 @@
 import asyncio
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from app.services.cache_faq import procesar_cache_faq
 
 from pydantic import TypeAdapter
 
 from app.db import repositorio
+from app.db import faq as repositorio_faq
 from app.drive.cliente import obtener_metadatos_archivo
 from app.models.chat import (
     ContextoChat,
@@ -16,16 +17,23 @@ from app.models.chat import (
     RespuestaChat,
     SolicitudChat,
 )
-from app.models.rag import FiltrosRecuperacion
+from app.models.rag import FiltrosRecuperacion, FragmentoRecuperado
+from app.models.faq import FragmentoFuenteFaq
+from app.providers.embeddings.base import ResultadoEmbedding
 from app.providers.base import ContenidoBloqueado, SolicitudLLM
-from app.services.intencion_documental import clasificar_intencion_documental
+from app.services.intencion_documental import clasificar_intencion_documental, es_consulta_institucional
+from app.services.cache_faq import buscar_faq
+from app.services.validacion_embeddings_rag import (
+    validar_configuracion_rag, validar_resultado_consulta,
+)
 from app.services.moderador import entrada_bloqueada
 from app.services.postprocesador import (
     ErrorPostproceso, registrar_etapa, validar_generacion,
 )
 from app.services.recuperador import recuperar_fragmentos
 from app.services.sanitizador import normalizar_comparacion
-from app.services.temporalidad import RECORDATORIO, es_temporal
+from app.services.temporalidad import advertencia_temporal
+from app.services.eventos_cronograma import contexto_evento, identificar_evento, respalda_evento
 
 _PROMPT = Path(__file__).resolve().parents[1] / "prompts" / "sistema.md"
 SIN_EVIDENCIA = (
@@ -37,20 +45,16 @@ SIN_EVIDENCIA = (
 class ErrorConversacion(RuntimeError):
     """Fallo técnico cuyo detalle público nunca contiene payloads."""
 
-def normalizar_materia_por_sinonimo(texto_usuario: str) -> str:
-    """Mapea abreviaturas y sinónimos comunes al nombre oficial de la materia."""
-    texto = texto_usuario.lower()
-    
-    if any(k in texto for k in ["tp", "tecnicas de programacion", "técnicas de programación", "tecnicas"]):
-        return "Técnicas de Programación"
-    if any(k in texto for k in ["bd", "base de datos", "bases de datos", "administracion de bases de datos"]):
-        return "Administración de Bases de Datos"
-    if any(k in texto for k in ["analisis", "matematica", "análisis matemático", "elementos de analisis matematico"]):
-        return "Elementos de Análisis Matemático"
-    if any(k in texto for k in ["logica", "computacional", "lógica computacional"]):
-        return "Lógica Computacional"
-        
-    return texto_usuario
+
+@dataclass
+class GeneracionDocumental:
+    respuesta: RespuestaChat
+    fragmentos: list[FragmentoRecuperado]
+    primarios: list[int] | None
+    embedding: ResultadoEmbedding
+    filtros: FiltrosRecuperacion
+    fuentes_versionadas: list[FragmentoFuenteFaq]
+
 
 def _coincide(documento, filtros):
     if filtros.materia_id is not None and documento.materia_id not in (None, filtros.materia_id):
@@ -73,6 +77,17 @@ def _resolver_contexto(contexto, texto, materias):
                              consulta)
                    for nombre in (materia.nombre, materia.codigo) if nombre.strip())
         }
+        if not ids:
+            for materia in materias:
+                palabras = [p for p in normalizar_comparacion(materia.nombre).split()
+                            if p not in {"de", "del", "la", "las", "los", "el", "y"}]
+                alias = {"".join(p[0] for p in palabras),
+                         "".join(p[0] for p in palabras[-2:])}
+                if palabras and len(palabras[0]) >= 5:
+                    alias.add(palabras[0])
+                if any(len(a) >= 2 and re.search(r"(?<!\w)" + re.escape(a) + r"(?!\w)",
+                                                consulta) for a in alias):
+                    ids.add(materia.id)
         if len(ids) == 1:
             cambios["materia_id"] = ids.pop()
     if contexto.comision is None:
@@ -80,6 +95,10 @@ def _resolver_contexto(contexto, texto, materias):
                              normalizar_comparacion(texto))
         if comision:
             cambios["comision"] = comision[1].upper()
+    if contexto.periodo is None:
+        periodo = re.search(r"\b[0-9]{4}c[12]\b", normalizar_comparacion(texto))
+        if periodo:
+            cambios["periodo"] = periodo[0].upper()
     return contexto.model_copy(update=cambios)
 
 
@@ -123,11 +142,21 @@ async def conversar(solicitud: SolicitudChat, *, configuracion, gestor_embedding
         raise ErrorConversacion("No se pudo completar la consulta. Intentá nuevamente.") from None
 
 
-async def _conversar(solicitud, config, embeddings, llm):
+async def generar_documental(solicitud, *, configuracion, gestor_embeddings, gestor_llm,
+                             embedding_consulta=None):
+    """Mismo flujo RAG para T41/T43; omite exclusivamente la consulta de caché."""
+    captura = {}
+    await _conversar(solicitud, configuracion, gestor_embeddings, gestor_llm,
+                     usar_cache=False, captura=captura, embedding_consulta=embedding_consulta)
+    return captura.get("generacion")
+
+
+async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, captura=None,
+                     embedding_consulta=None):
     contexto = solicitud.contexto
     pendiente = contexto.consulta_pendiente
     texto = f"{pendiente}\nAclaración: {solicitud.mensaje}" if pendiente else solicitud.mensaje
-    advertencia = RECORDATORIO if es_temporal(texto) else None
+    advertencia = advertencia_temporal(texto)
     umbral = config.rag_umbral_confianza
 
     def responder(estado, respuesta, resultado=None, **extras):
@@ -141,44 +170,16 @@ async def _conversar(solicitud, config, embeddings, llm):
     if entrada_bloqueada(texto):
         contexto = contexto.model_copy(update={"consulta_pendiente": None})
         return responder("bloqueada", "No puedo procesar esa solicitud.")
-
-    # ----------------------------------------------------
-    # NUEVO: Intercepción por Caché de Preguntas Frecuentes (Bloque 6)
-    # ----------------------------------------------------
-    respuesta_cache = await procesar_cache_faq(
-        mensaje=texto,
-        contexto=contexto.model_dump() if hasattr(contexto, "model_dump") else dict(contexto),
-        gestor_embeddings=embeddings,
-        configuracion=config,
-    )
-    if respuesta_cache:
-        # Si hay acierto en caché, limpiamos pendiente y devolvemos la respuesta de inmediato
-        contexto_actualizado = contexto.model_copy(update={"consulta_pendiente": None})
-        return RespuestaChat(
-            estado=respuesta_cache["estado"],
-            respuesta=respuesta_cache["respuesta"],
-            fuentes=respuesta_cache.get("fuentes", []),
-            confianza=respuesta_cache.get("confianza", 1.0),
-            umbral=respuesta_cache.get("umbral", umbral),
-            advertencia_temporal=advertencia,
-            contexto=contexto_actualizado,
-        )
-    # ----------------------------------------------------
-
     materias = await asyncio.to_thread(repositorio.listar_materias_chat)
-    texto_con_sinonimo = normalizar_materia_por_sinonimo(texto)
-    contexto = _resolver_contexto(contexto, texto_con_sinonimo, materias)
+    contexto = _resolver_contexto(contexto, texto, materias)
     intencion = clasificar_intencion_documental(texto, config)
+    institucional = (contexto.materia_id is None and contexto.comision is None
+                     and es_consulta_institucional(texto))
+    if institucional:
+        intencion = "general"
+    advertencia = advertencia_temporal(texto, tipo_documental=intencion)
     academica = intencion in ("programa", "cronograma")
-    
-    # ----------------------------------------------------
-    # FIX: Si la consulta es institucional general, nunca debe tratarse como académica ni requerir materia
-    from app.services.intencion_documental import requiere_materia_por_consulta
-    if not requiere_materia_por_consulta(texto):
-        academica = False
-        intencion = None
-    # ----------------------------------------------------
-
+    evento = identificar_evento(texto) if intencion == "cronograma" else None
     umbral = config.umbral_rag_para_tipo(intencion) if academica else config.rag_umbral_confianza
     filtros = FiltrosRecuperacion(
         materia_id=contexto.materia_id, comision=contexto.comision, periodo=contexto.periodo,
@@ -186,10 +187,19 @@ async def _conversar(solicitud, config, embeddings, llm):
     )
     faltantes = [campo for campo in ("materia_id", "comision") if getattr(contexto, campo) is None]
 
+    async def vectorizar():
+        nonlocal embedding_consulta
+        validar_configuracion_rag(config)
+        if embedding_consulta is None:
+            embedding_consulta = await embeddings.embed_query(texto.strip())
+        validar_resultado_consulta(embedding_consulta)
+        return embedding_consulta
+
     async def recuperar(ids=None):
         return await recuperar_fragmentos(
             texto, filtros=filtros, documento_ids=ids,
             gestor=embeddings, configuracion=config,
+            embedding_consulta=await vectorizar(),
         )
 
     resultado = None
@@ -201,6 +211,8 @@ async def _conversar(solicitud, config, embeddings, llm):
                     else "¿Sobre qué comisión es tu consulta?")
         return responder("requiere_contexto", pregunta, resultado, campo_requerido=campo)
 
+    seleccion_programas = None
+    generales = None
     if academica:
         documentos = await asyncio.to_thread(repositorio.listar_documentos_chat)
         cobertura = [d for d in documentos if d.tipo_documental == intencion
@@ -231,13 +243,26 @@ async def _conversar(solicitud, config, embeddings, llm):
             representante = min(cobertura, key=lambda d: d.id)
             filtros = filtros.model_copy(update={"comision": representante.comision})
             seleccion_programas = [d.id for d in cobertura if d.comision == representante.comision]
-        resultado = await recuperar(seleccion_programas)
     elif faltantes:
         documentos = await asyncio.to_thread(repositorio.listar_documentos_chat)
         generales = [d.id for d in documentos if _coincide(d, filtros)
+                     and (not institucional or d.tipo_documental == "general")
                      and all(getattr(d, campo) is None for campo in faltantes)]
-        if generales:
-            resultado = await recuperar(generales)
+    # Una búsqueda después de resolver también las aclaraciones T36.
+    if usar_cache:
+        hit = await buscar_faq(
+            texto, contexto=contexto, tipo_documental=intencion if academica else "general",
+            embedding=await vectorizar(), configuracion=config, resolver_fuentes=resolver_fuentes,
+        )
+        if hit is not None:
+            return hit
+    if academica:
+        resultado = await recuperar(seleccion_programas)
+    elif generales:
+        resultado = await recuperar(generales)
+    if institucional and (resultado is None or not resultado.evidencia_suficiente):
+        contexto = contexto.model_copy(update={"consulta_pendiente": None})
+        return responder("sin_evidencia", SIN_EVIDENCIA, resultado)
     if not academica and (resultado is None or not resultado.evidencia_suficiente):
         resultado = await recuperar()
         if resultado.evidencia_suficiente:
@@ -258,6 +283,11 @@ async def _conversar(solicitud, config, embeddings, llm):
     primarios = resultado.fragmento_ids_primarios
     if academica and (not primarios or not any(f.fragmento_id in primarios for f in fragmentos)):
         return responder("sin_evidencia", SIN_EVIDENCIA)
+    if evento is not None and not any(
+        f.fragmento_id in (primarios or []) and respalda_evento(f.contenido, evento)
+        for f in fragmentos
+    ):
+        return responder("sin_evidencia", SIN_EVIDENCIA)
     instrucciones = _PROMPT.read_text(encoding="utf-8")
     if academica:
         instrucciones += (
@@ -266,16 +296,40 @@ async def _conversar(solicitud, config, embeddings, llm):
             "contexto institucional; no demuestra horarios, contenidos ni fechas específicos. "
             "No sustituyas ni contradigas los datos primarios con información complementaria."
         )
+    if evento is not None:
+        instrucciones += (
+            "\nRespondé sobre el evento académico solicitado usando sus bloques específicos. "
+            "No equipares parcial ordinario, actividad pre-parcial y recuperatorio. "
+            "Si la fuente sólo fecha el inicio de una semana, indicá la semana y cuándo "
+            "empieza; no afirmes que el examen se toma ese día. No infieras año ni día exacto."
+        )
     solicitud_llm = SolicitudLLM(
         instrucciones_sistema=instrucciones,
         contexto=json.dumps([
             {"fragmento_id": f.fragmento_id, "documento_id": f.documento_id,
-             "titulo": f.titulo, "contenido": f.contenido,
+             "titulo": f.titulo,
+             "contenido": (contexto_evento(f.contenido, evento)
+                           if evento is not None and f.fragmento_id in (primarios or [])
+                           else f.contenido),
              "evidencia": "primaria" if primarios is None or f.fragmento_id in primarios else "complementaria"}
             for f in fragmentos
         ], ensure_ascii=False),
         consulta=texto, temperatura=0.1, max_tokens=1200,
     )
+    fuentes_versionadas = []
+    if captura is not None:
+        # Capturar ANTES del LLM: el upsert comprobará que estas versiones siguen vigentes.
+        fuentes_versionadas = await asyncio.to_thread(
+            repositorio_faq.obtener_fuentes_para_guardar,
+            [f.fragmento_id for f in fragmentos],
+        )
+        actuales = {f.fragmento_id: f for f in fuentes_versionadas}
+        for fragmento in fragmentos:
+            actual = actuales[fragmento.fragmento_id]
+            if (actual.estado_documento != "activo" or actual.vigente is not True
+                    or actual.como_fragmento().model_dump(exclude={"similitud"})
+                    != fragmento.model_dump(exclude={"similitud"})):
+                raise ErrorConversacion("La evidencia cambió durante la generación FAQ.")
     generado = await llm.generar_con_respaldo(solicitud_llm)
     etapa = "validacion_generacion"
     try:
@@ -283,34 +337,19 @@ async def _conversar(solicitud, config, embeddings, llm):
             generado.texto, fragmentos, proveedor=generado.proveedor,
             fragmento_ids_primarios=primarios if academica else None,
             documento_ids_permitidos={f.documento_id for f in fragmentos},
+            consulta=texto if intencion == "cronograma" else None,
         )
-        
         etapa = "fuentes_construccion_error"
         fuentes = await resolver_fuentes(usados)
         registrar_etapa("fuentes_construidas", proveedor=generado.proveedor, cantidad=len(fuentes))
-
-        # ----------------------------------------------------
-        # NUEVO: Auto-aprendizaje de Caché FAQ (Guardado automático)
-        # ----------------------------------------------------
-        try:
-            res_emb = await embeddings.embed_query(texto.strip())
-            vector_nuevo = getattr(res_emb, "vector", None)
-            if vector_nuevo and len(vector_nuevo) == 768:
-                await asyncio.to_thread(
-                    repositorio.guardar_pregunta_frecuente,
-                    pregunta=texto,
-                    respuesta=salida.respuesta,
-                    vector_embedding=vector_nuevo,
-                    materia_id=contexto.materia_id,
-                    comision=contexto.comision,
-                )
-        except Exception as cache_err:
-            # Un fallo en el autoguardado nunca debe interrumpir la respuesta al usuario
-            print(f"=== Error al auto-guardar en caché FAQ: {cache_err} ===")
-        # ----------------------------------------------------
-
         etapa = "respuesta_final_error"
         respuesta = responder("respondida", salida.respuesta, resultado, fuentes=fuentes)
+        if captura is not None:
+            captura["generacion"] = GeneracionDocumental(
+                respuesta, usados, primarios if academica else None,
+                await vectorizar(), filtros,
+                [f for f in fuentes_versionadas if f.fragmento_id in salida.fragmento_ids],
+            )
         registrar_etapa("respuesta_final_validada", proveedor=generado.proveedor)
         return respuesta
     except ErrorPostproceso:

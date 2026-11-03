@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from app.models.chat import ContextoChat, MateriaChat, SolicitudChat
 from app.models.rag import DocumentoPersistido, FragmentoRecuperado, ResultadoRecuperacion
 from app.providers.base import ContenidoBloqueado, RespuestaLLM
+from app.providers.embeddings.base import ResultadoEmbedding
 from app.services import conversacion as c
 from app.services.temporalidad import es_temporal, fechas_respaldadas
 from app.settings import Configuracion
@@ -28,7 +29,7 @@ def recuperacion(filas):
     mejor = max((f.similitud for f in filas), default=None)
     return ResultadoRecuperacion(
         fragmentos=filas, mejor_similitud=mejor, confianza=max(0, min(1, mejor or 0)),
-        umbral=0.68, evidencia_suficiente=mejor is not None and mejor >= 0.68,
+        umbral=0.7, evidencia_suficiente=mejor is not None and mejor >= 0.7,
     )
 
 
@@ -50,7 +51,9 @@ def entorno(monkeypatch):
     llm = SimpleNamespace(generar_con_respaldo=AsyncMock(
         return_value=RespuestaLLM(salida(), "falso", "modelo")))
     return SimpleNamespace(rag=rag, llm=llm, metadatos=metadatos, documentos=documentos,
-                           materias=materias, embeddings=object())
+                           materias=materias, embeddings=SimpleNamespace(embed_query=AsyncMock(
+                               return_value=ResultadoEmbedding(
+                                   [1.0] + [0.0] * 767, "gemini", "gemini-embedding-001", 768))))
 
 
 def ejecutar(entorno, mensaje="¿Cuándo abre la inscripción?", contexto=None):
@@ -75,7 +78,7 @@ def test_parafrasis_fuentes_prompt_y_gestores(entorno):
     assert json.loads(solicitud.contexto)[0]["fragmento_id"] == 1
 
 
-@pytest.mark.parametrize("score,estado", [(0.67, "sin_evidencia"), (0.68, "respondida")])
+@pytest.mark.parametrize("score,estado", [(0.699, "sin_evidencia"), (0.7, "respondida")])
 def test_umbral(entorno, score, estado):
     entorno.rag.return_value = recuperacion([fragmento(similitud=score)])
     resultado = ejecutar(entorno)

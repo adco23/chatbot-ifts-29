@@ -6,40 +6,23 @@ from app.models.rag import TipoDocumental
 from app.services.sanitizador import normalizar_comparacion
 from app.settings import Configuracion
 
-# Palabras clave generales que NUNCA deben requerir materia/comisión
-GENERAL_KEYWORDS = [
-    "inicio de clases", "empiezan las clases", "comienzo de clases",
-    "inscripción", "inscribir", "preinscripción", "preinscribir",
-    "documentación", "ingresantes", "ingresante",
-    "moodle", "siu", "guaraní",
-    "regularidad", "asistencia",
-    "contacto", "bedelía", "bedelia",
-    "comisión", "comision",
-    "calendario académico", "calendario academico", "fechas institucionales", "fechas"
-]
 
-# Palabras clave académicas específicas que SÍ requieren contexto de materia
-ACADEMIC_SPECIFIC_KEYWORDS = [
-    "contenido", "contenidos", "programa",
-    "horario", "horarios",
-    "parcial", "parciales",
-    "recuperatorio", "recuperatorios",
-    "docente", "docentes", "profesor", "profesores",
-    "cronograma"
-]
+def es_consulta_institucional(texto: str) -> bool:
+    """Inicio/fin del ciclo sin materia: alcance institucional, no otra intención."""
+    consulta = normalizar_comparacion(texto)
+    return bool(re.search(
+        r"\b(?:inicio|fin|comienzo|comienz\w*|comenz\w*|empez\w*|empiez\w*|"
+        r"inici\w*|termin\w*)\b.{0,40}\b(?:clases|ciclo lectivo|cuatrimestre)\b",
+        consulta,
+    ))
+
 
 def requiere_materia_por_consulta(texto: str) -> bool:
-    texto_lower = texto.lower()
-    # Si la consulta contiene términos institucionales generales, NO requiere materia
-    for kw in GENERAL_KEYWORDS:
-        if kw in texto_lower:
-            return False
+    """Compatibilidad: utiliza el único clasificador y una regla de alcance."""
+    return (not es_consulta_institucional(texto)
+            and clasificar_intencion_documental(texto, Configuracion())
+            in ("programa", "cronograma"))
 
-    # Si contiene términos específicos de una materia (horarios, contenidos, parciales, etc.)
-    for kw in ACADEMIC_SPECIFIC_KEYWORDS:
-        if kw in texto_lower:
-            return True
-    return False
 
 def clasificar_intencion_documental(texto: str, config: Configuracion) -> TipoDocumental | None:
     consulta = normalizar_comparacion(texto)
