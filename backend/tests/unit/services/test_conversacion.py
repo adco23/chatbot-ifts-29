@@ -81,7 +81,7 @@ def test_parafrasis_fuentes_prompt_y_gestores(entorno):
 @pytest.mark.parametrize("score,estado", [(0.699, "sin_evidencia"), (0.7, "respondida")])
 def test_umbral(entorno, score, estado):
     entorno.rag.return_value = recuperacion([fragmento(similitud=score)])
-    resultado = ejecutar(entorno)
+    resultado = ejecutar(entorno, "Consulta sobre el calendario institucional.")
     assert resultado.estado == estado
     if estado == "sin_evidencia":
         entorno.llm.generar_con_respaldo.assert_not_called()
@@ -90,7 +90,7 @@ def test_umbral(entorno, score, estado):
 
 def test_sin_resultados_no_llm(entorno):
     entorno.rag.return_value = recuperacion([])
-    assert ejecutar(entorno).estado == "sin_evidencia"
+    assert ejecutar(entorno, "Consulta sin documentación disponible.").estado == "sin_evidencia"
     entorno.llm.generar_con_respaldo.assert_not_called()
 
 

@@ -13,6 +13,7 @@ from app.db import faq as repositorio_faq
 from app.drive.cliente import obtener_metadatos_archivo
 from app.models.chat import (
     ContextoChat,
+    DerivacionChat,
     FuenteChat,
     RespuestaChat,
     SolicitudChat,
@@ -23,6 +24,7 @@ from app.providers.embeddings.base import ResultadoEmbedding
 from app.providers.base import ContenidoBloqueado, SolicitudLLM
 from app.services.intencion_documental import clasificar_intencion_documental, es_consulta_institucional
 from app.services.cache_faq import buscar_faq
+from app.services import derivacion
 from app.services.validacion_embeddings_rag import (
     validar_configuracion_rag, validar_resultado_consulta,
 )
@@ -128,10 +130,33 @@ async def resolver_fuentes(fragmentos):
     return list(fuentes.values())
 
 
+def _texto_consulta(solicitud: SolicitudChat) -> str:
+    pendiente = solicitud.contexto.consulta_pendiente
+    return f"{pendiente}\nAclaración: {solicitud.mensaje}" if pendiente else solicitud.mensaje
+
+
 async def conversar(solicitud: SolicitudChat, *, configuracion, gestor_embeddings, gestor_llm):
     """Todas las dependencias se inyectan; no se registran textos ni excepciones remotas."""
     try:
-        return await _conversar(solicitud, configuracion, gestor_embeddings, gestor_llm)
+        respuesta = await _conversar(solicitud, configuracion, gestor_embeddings, gestor_llm)
+        if respuesta.estado != "sin_evidencia":
+            return respuesta
+        sector = await asyncio.to_thread(
+            derivacion.find_referral_department, _texto_consulta(solicitud),
+        )
+        if sector is None:
+            return respuesta
+        contacto = DerivacionChat(
+            sector=sector["department"], correo=sector["email"],
+            horario=sector["schedule"], responsable=sector.get("contact_person"),
+        )
+        return RespuestaChat.model_validate(respuesta.model_dump() | {
+            "estado": "derivada", "derivacion": contacto,
+            "respuesta": (
+                "No cuento con evidencia suficiente para responder esa consulta. "
+                f"Podés consultar a {contacto.sector}."
+            ),
+        })
     except ContenidoBloqueado:
         return RespuestaChat(
             estado="bloqueada", respuesta="No puedo procesar esa solicitud.",
@@ -155,7 +180,7 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
                      embedding_consulta=None):
     contexto = solicitud.contexto
     pendiente = contexto.consulta_pendiente
-    texto = f"{pendiente}\nAclaración: {solicitud.mensaje}" if pendiente else solicitud.mensaje
+    texto = _texto_consulta(solicitud)
     advertencia = advertencia_temporal(texto)
     umbral = config.rag_umbral_confianza
 
