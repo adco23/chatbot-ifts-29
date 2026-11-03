@@ -326,9 +326,14 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
         actuales = {f.fragmento_id: f for f in fuentes_versionadas}
         for fragmento in fragmentos:
             actual = actuales[fragmento.fragmento_id]
+            excluidos = {"similitud"}
+            if not academica and fragmento.tipo_documental is None:
+                # match_fragmentos no devuelve tipo_documental. El snapshot conserva
+                # su valor real; su ausencia en la RPC no representa un cambio.
+                excluidos.add("tipo_documental")
             if (actual.estado_documento != "activo" or actual.vigente is not True
-                    or actual.como_fragmento().model_dump(exclude={"similitud"})
-                    != fragmento.model_dump(exclude={"similitud"})):
+                    or actual.como_fragmento().model_dump(exclude=excluidos)
+                    != fragmento.model_dump(exclude=excluidos)):
                 raise ErrorConversacion("La evidencia cambió durante la generación FAQ.")
     generado = await llm.generar_con_respaldo(solicitud_llm)
     etapa = "validacion_generacion"
