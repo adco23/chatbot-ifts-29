@@ -9,6 +9,7 @@ from pydantic import TypeAdapter
 
 from app.db import repositorio
 from app.db import faq as repositorio_faq
+from app.db import derivaciones as repositorio_derivaciones
 from app.drive.cliente import obtener_metadatos_archivo
 from app.models.chat import (
     ContextoChat,
@@ -164,7 +165,7 @@ async def conversar(solicitud: SolicitudChat, *, configuracion, gestor_embedding
             horario=sector["schedule"], responsable=sector.get("contact_person"),
         )
         correo = derivacion.generar_correo_prearmado(contacto)
-        return RespuestaChat.model_validate(respuesta.model_dump() | {
+        respuesta_derivada = RespuestaChat.model_validate(respuesta.model_dump() | {
             "estado": "derivada", "derivacion": contacto,
             "correo_prearmado": correo,
             "respuesta": (
@@ -172,6 +173,10 @@ async def conversar(solicitud: SolicitudChat, *, configuracion, gestor_embedding
                 f"Podés consultar a {contacto.sector}."
             ),
         })
+        await asyncio.to_thread(
+            repositorio_derivaciones.registrar_derivacion_anonima, contacto.sector,
+        )
+        return respuesta_derivada
     except ContenidoBloqueado:
         return RespuestaChat(
             estado="bloqueada", respuesta="No puedo procesar esa solicitud.",
