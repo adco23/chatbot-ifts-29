@@ -5,7 +5,6 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-
 from pydantic import TypeAdapter
 
 from app.db import repositorio
@@ -32,6 +31,7 @@ from app.services.moderador import entrada_bloqueada
 from app.services.postprocesador import (
     ErrorPostproceso, registrar_etapa, validar_generacion,
 )
+from app.services.sinonimos import normalizar_y_buscar_materia
 from app.services.recuperador import recuperar_fragmentos
 from app.services.sanitizador import normalizar_comparacion
 from app.services.temporalidad import advertencia_temporal
@@ -72,35 +72,48 @@ def _coincide(documento, filtros):
 def _resolver_contexto(contexto, texto, materias):
     cambios = {}
     if contexto.materia_id is None:
-        consulta = normalizar_comparacion(texto)
-        ids = {
-            materia.id for materia in materias
-            if any(re.search(r"(?<!\w)" + re.escape(normalizar_comparacion(nombre)) + r"(?!\w)",
-                             consulta)
-                   for nombre in (materia.nombre, materia.codigo) if nombre.strip())
-        }
-        if not ids:
+        # 1. Intentamos resolver primero usando el módulo de sinónimos
+        materia_encontrada_nombre = normalizar_y_buscar_materia(texto)
+        if materia_encontrada_nombre:
             for materia in materias:
-                palabras = [p for p in normalizar_comparacion(materia.nombre).split()
-                            if p not in {"de", "del", "la", "las", "los", "el", "y"}]
-                alias = {"".join(p[0] for p in palabras),
-                         "".join(p[0] for p in palabras[-2:])}
-                if palabras and len(palabras[0]) >= 5:
-                    alias.add(palabras[0])
-                if any(len(a) >= 2 and re.search(r"(?<!\w)" + re.escape(a) + r"(?!\w)",
-                                                consulta) for a in alias):
-                    ids.add(materia.id)
-        if len(ids) == 1:
-            cambios["materia_id"] = ids.pop()
+                if normalizar_comparacion(materia.nombre) == normalizar_comparacion(materia_encontrada_nombre):
+                    cambios["materia_id"] = materia.id
+                    break
+
+        # 2. Si el sinónimo no matcheó, usamos la lógica original de códigos, nombres y alias automáticos
+        if "materia_id" not in cambios:
+            consulta = normalizar_comparacion(texto)
+            ids = {
+                materia.id for materia in materias
+                if any(re.search(r"(?<!\w)" + re.escape(normalizar_comparacion(nombre)) + r"(?!\w)",
+                                consulta)
+                       for nombre in (materia.nombre, materia.codigo) if nombre.strip())
+            }
+            if not ids:
+                for materia in materias:
+                    palabras = [p for p in normalizar_comparacion(materia.nombre).split()
+                                if p not in {"de", "del", "la", "las", "los", "el", "y"}]
+                    alias = {"".join(p[0] for p in palabras),
+                             "".join(p[0] for p in palabras[-2:])}
+                    if palabras and len(palabras[0]) >= 5:
+                        alias.add(palabras[0])
+                    if any(len(a) >= 2 and re.search(r"(?<!\w)" + re.escape(a) + r"(?!\w)",
+                                                   consulta) for a in alias):
+                        ids.add(materia.id)
+            if len(ids) == 1:
+                cambios["materia_id"] = ids.pop()
+
     if contexto.comision is None:
         comision = re.search(r"\bcomision\s+([a-z]|\d{1,4}[a-z]?)(?!\w)",
                              normalizar_comparacion(texto))
         if comision:
             cambios["comision"] = comision[1].upper()
+            
     if contexto.periodo is None:
         periodo = re.search(r"\b[0-9]{4}c[12]\b", normalizar_comparacion(texto))
         if periodo:
             cambios["periodo"] = periodo[0].upper()
+            
     return contexto.model_copy(update=cambios)
 
 
