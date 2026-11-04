@@ -163,8 +163,10 @@ async def conversar(solicitud: SolicitudChat, *, configuracion, gestor_embedding
             sector=sector["department"], correo=sector["email"],
             horario=sector["schedule"], responsable=sector.get("contact_person"),
         )
+        correo = derivacion.generar_correo_prearmado(contacto)
         return RespuestaChat.model_validate(respuesta.model_dump() | {
             "estado": "derivada", "derivacion": contacto,
+            "correo_prearmado": correo,
             "respuesta": (
                 "No cuento con evidencia suficiente para responder esa consulta. "
                 f"Podés consultar a {contacto.sector}."

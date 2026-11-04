@@ -121,6 +121,7 @@ def contacto():
 def test_contrato_derivado_y_responsable_opcional():
     respuesta = RespuestaChat(
         estado="derivada", respuesta="Consultá a Bedelía.", derivacion=contacto(),
+        correo_prearmado=derivacion.generar_correo_prearmado(contacto()),
         umbral=0.7, contexto=ContextoChat(),
     )
     assert respuesta.model_dump(mode="json")["derivacion"] == {

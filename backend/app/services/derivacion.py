@@ -7,12 +7,25 @@ from pathlib import Path
 
 # Importamos el diccionario global MESSAGES desde el cargador
 from app.config.message_loader import MESSAGES
-from app.models.chat import DerivacionChat
+from app.models.chat import CorreoDerivacionChat, DerivacionChat
 from app.services.sanitizador import normalizar_comparacion, sanitizar_texto
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 DEFAULT_JSON_PATH = CONFIG_DIR / "derivaciones.json"
 logger = logging.getLogger(__name__)
+
+
+def generar_correo_prearmado(derivacion: DerivacionChat) -> CorreoDerivacionChat:
+    """T39: plantilla fija; no recibe ni copia mensajes o datos del estudiante."""
+    return CorreoDerivacionChat(
+        destinatario=derivacion.correo,
+        asunto="Consulta de estudiante - IFTS 29",
+        cuerpo=(
+            "Hola,\n\n"
+            "Quisiera realizar una consulta relacionada con gestiones estudiantiles del IFTS 29."
+            "\n\nMuchas gracias."
+        ),
+    )
 
 
 def _get_msg(key_path: str, default: str) -> str:
