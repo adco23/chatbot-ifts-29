@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
-from app.services.sanitizador import sanitizar_texto
+from app.services.sanitizador import sanitizar_datos_personales, sanitizar_texto
 
 
 class ModeloChat(BaseModel):
@@ -19,10 +19,15 @@ class ContextoChat(ModeloChat):
     periodo: str | None = Field(default=None, max_length=100)
     consulta_pendiente: str | None = Field(default=None, max_length=2000)
 
-    @field_validator("comision", "periodo", "consulta_pendiente")
+    @field_validator("comision", "periodo")
     @classmethod
     def limpiar_opcionales(cls, valor: str | None) -> str | None:
         return (sanitizar_texto(valor) or None) if valor is not None else None
+
+    @field_validator("consulta_pendiente")
+    @classmethod
+    def ocultar_datos_pendientes(cls, valor: str | None) -> str | None:
+        return (sanitizar_datos_personales(valor) or None) if valor is not None else None
 
 
 class SolicitudChat(ModeloChat):
@@ -32,7 +37,7 @@ class SolicitudChat(ModeloChat):
     @field_validator("mensaje")
     @classmethod
     def limpiar_mensaje(cls, valor: str) -> str:
-        limpio = sanitizar_texto(valor)
+        limpio = sanitizar_datos_personales(valor)
         if not limpio:
             raise ValueError("El mensaje debe contener texto.")
         return limpio
