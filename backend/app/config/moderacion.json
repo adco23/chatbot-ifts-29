@@ -1,0 +1,34 @@
+{
+  "insultos": [
+    "pelotudo", "boludo", "tarado", "idiota", "imbecil",
+    "estupido", "sorete", "soreta", "forro", "gil", "salame","pavote"
+  ],
+  "insultos_aislados": [
+    "pelotudo", "tarado", "idiota", "imbecil", "estupido"
+  ],
+  "groserias_contextuales": [
+    "mierda", "carajo"
+  ],
+  "amenazas_frases": [
+    "te voy a matar",
+    "te voy a pegar",
+    "te voy a golpear",
+    "te voy a lastimar",
+    "te voy a cagar a piñas",
+    "te voy a romper la cara"
+  ],
+  "discriminacion_frases": [
+    "de mierda", "asqueroso", "asquerosa",
+    "son inferiores", "son basura", "son escoria"
+  ],
+  "incitaciones_discriminatorias": [
+    "hay que eliminar a",
+    "hay que exterminar a",
+    "deberiamos eliminar a",
+    "deberiamos exterminar a"
+  ],
+  "terminos_grupo": [
+    "negro", "judio", "inmigrante", "extranjero", "gay",
+    "homosexual", "musulman", "musulmana", "discapacitado"
+  ]
+}

@@ -28,7 +28,7 @@ from app.services import derivacion
 from app.services.validacion_embeddings_rag import (
     validar_configuracion_rag, validar_resultado_consulta,
 )
-from app.services.moderador import entrada_bloqueada
+from app.services.moderador import entrada_bloqueada, mensaje_bloqueo
 from app.services.postprocesador import (
     ErrorPostproceso, registrar_etapa, validar_generacion,
 )
@@ -214,7 +214,7 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
 
     if entrada_bloqueada(texto):
         contexto = contexto.model_copy(update={"consulta_pendiente": None})
-        return responder("bloqueada", "No puedo procesar esa solicitud.")
+        return responder("bloqueada", mensaje_bloqueo(texto))
     materias = await asyncio.to_thread(repositorio.listar_materias_chat)
     contexto = _resolver_contexto(contexto, texto, materias)
     intencion = clasificar_intencion_documental(texto, config)
