@@ -9,6 +9,9 @@ from pydantic import ValidationError
 from app.models.chat import SalidaGenerador
 from app.services.sanitizador import sanitizar_texto
 from app.services.temporalidad import fechas_respaldadas
+from app.services.eventos_cronograma import (
+    ErrorEvento, identificar_evento, validar_eventos_mencionados, validar_respuesta_evento,
+)
 
 logger = logging.getLogger(__name__)
 _CLAVES = {"respuesta", "fragmento_ids", "citas_textuales"}
@@ -65,7 +68,7 @@ def _ids_seguros(valores):
 
 def validar_generacion(
     texto, fragmentos, *, proveedor=None, fragmento_ids_primarios=None,
-    documento_ids_permitidos=None,
+    documento_ids_permitidos=None, consulta=None,
 ):
     disponibles = {f.fragmento_id: f for f in fragmentos}
     permitidos = _ids_seguros(list(disponibles))
@@ -165,4 +168,17 @@ def validar_generacion(
     if not fechas_respaldadas(salida.respuesta, contenidos):
         _rechazar("fechas_invalidas", "fecha_no_respaldada", proveedor)
     registrar_etapa("fechas_validas", proveedor=proveedor)
+    evento = identificar_evento(consulta) if consulta is not None else None
+    cronograma = any(f.tipo_documental == "cronograma" for f in fragmentos)
+    if evento is not None or cronograma:
+        try:
+            if evento is not None:
+                validar_respuesta_evento(salida.respuesta, contenidos, evento)
+            else:
+                validar_eventos_mencionados(salida.respuesta, contenidos)
+        except ErrorEvento as error:
+            _rechazar("eventos_invalidos", str(error), proveedor)
+        registrar_etapa("evento_validado", proveedor=proveedor,
+                        tipo=evento.tipo if evento is not None else "general",
+                        numero=evento.numero if evento is not None else None)
     return salida, [disponibles[i] for i in usados]

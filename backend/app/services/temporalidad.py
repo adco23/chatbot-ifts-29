@@ -10,7 +10,8 @@ RECORDATORIO = (
 )
 _TEMAS = re.compile(
     r"\b(?:fecha\w*|inscrip\w*|examen\w*|examenes|cronograma\w*|horario\w*|"
-    r"venc\w*|periodo\w*|cuatrimestre\w*|calendario\w*|cuando|ano|ciclo lectivo)\b"
+    r"venc\w*|periodo\w*|cuatrimestre\w*|calendario\w*|cuando|ano|ciclo lectivo|"
+    r"parcial(?:es)?|recuperatorios?)\b"
 )
 _MESES = (
     "enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|"
@@ -28,11 +29,21 @@ def es_temporal(texto: str) -> bool:
     return bool(_TEMAS.search(normalizado) or _FECHAS.search(normalizado))
 
 
+def advertencia_temporal(texto: str, *, tipo_documental: str | None = None) -> str | None:
+    """Política común de HIT y MISS; se calcula por consulta y no se persiste en FAQ."""
+    return RECORDATORIO if tipo_documental == "cronograma" or es_temporal(texto) else None
+
+
 def fechas_respaldadas(respuesta: str, contenidos: list[str]) -> bool:
     fechas = [_fecha_canonica(f) for f in _FECHAS.findall(normalizar_comparacion(respuesta))]
     evidencia = [_fecha_canonica(f) for texto in contenidos
                  for f in _FECHAS.findall(normalizar_comparacion(texto))]
     return all(any(_respalda_fecha(fecha, fuente) for fuente in evidencia) for fecha in fechas)
+
+
+def fechas_explicitas(texto: str) -> list[str]:
+    """Fechas reconocidas por la misma política temporal, sin inferir ni completar datos."""
+    return _FECHAS.findall(normalizar_comparacion(texto))
 
 
 _NUMERO_MES = {nombre: indice for indice, nombre in enumerate((

@@ -19,7 +19,7 @@ def fragmento(**cambios):
 
 
 def salida(**cambios):
-    return json.dumps(dict(respuesta="El primer parcial es el 30 de septiembre.",
+    return json.dumps(dict(respuesta="El primer parcial corresponde a la semana 8, que inicia el 30 de septiembre.",
                            fragmento_ids=[101], citas_textuales=[]) | cambios)
 
 
@@ -92,8 +92,9 @@ def test_complemento_no_sustituye_primaria_ni_fechas():
 
 
 def test_citas_opcionales_sin_inferir_fragmentos_y_sanitizacion():
-    respuesta, _ = validar(salida(respuesta="  El primer\x00 parcial es el 30/9.\n", citas_textuales=None))
-    assert respuesta.respuesta == "El primer parcial es el 30/9." and respuesta.citas_textuales == []
+    respuesta, _ = validar(salida(respuesta="  El primer\x00 parcial corresponde a la semana 8, que inicia el 30/9.\n", citas_textuales=None))
+    assert respuesta.respuesta == "El primer parcial corresponde a la semana 8, que inicia el 30/9."
+    assert respuesta.citas_textuales == []
     respuesta, _ = validar(salida(citas_textuales=[
         {"fragmento_id": "101", "documento_id": "20", "texto": "Primer parcial"},
     ]))

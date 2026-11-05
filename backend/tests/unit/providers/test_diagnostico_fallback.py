@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -18,22 +18,27 @@ from tests.unit.providers.ayudas import CLAVE, crear_solicitud
 @pytest.mark.parametrize("consumos", [
     (0.61, 0.64), ("limite", 0.75), ("limite", "limite"),
 ])
+@pytest.mark.parametrize("jitter", [0.8, 1.0, 1.2])
 def test_nueve_segundos_reservan_intento_groq_despues_de_gemini(
-    monkeypatch, caplog, consumos,
+    monkeypatch, caplog, consumos, jitter,
 ):
     caplog.set_level(logging.WARNING)
     reloj = [100.0]
     llamadas = []
+    esperas = []
 
     async def esperar(segundos):
+        esperas.append(segundos)
         reloj[0] += segundos
 
     monkeypatch.setattr(modulo, "time", SimpleNamespace(monotonic=lambda: reloj[0]))
     monkeypatch.setattr(modulo, "asyncio", SimpleNamespace(sleep=esperar))
+    azar = Mock(return_value=jitter)
+    monkeypatch.setattr(modulo.random, "uniform", azar)
     gestor = GestorProveedores([
         SimpleNamespace(nombre="gemini", timeout_segundos=6),
         SimpleNamespace(nombre="groq", timeout_segundos=3),
-    ], 9, backoff_segundos=0.25)
+    ], 9)
 
     async def intentar(proveedor, solicitud, limite):
         llamadas.append((proveedor.nombre, limite))
@@ -48,11 +53,53 @@ def test_nueve_segundos_reservan_intento_groq_despues_de_gemini(
     resultado = asyncio.run(gestor.generar_con_respaldo(crear_solicitud()))
     assert resultado.proveedor == "groq"
     assert [p for p, _ in llamadas] == ["gemini", "gemini", "groq"]
-    assert llamadas[0][1] == pytest.approx(2.875)
+    assert llamadas[0][1] == pytest.approx(2.4)
     assert llamadas[2][1] == pytest.approx(3)
+    assert esperas == [jitter]
+    azar.assert_called_once_with(0.8, 1.2)
     assert reloj[0] - 100 <= 9
     assert "fallback a Groq iniciado" in caplog.text and "Groq respondió" in caplog.text
     assert "Groq omitido" not in caplog.text
+
+
+@pytest.mark.parametrize("base,intento,factor,esperado", [
+    (1, 1, 0.8, 0.8), (1, 1, 1.2, 1.2),
+    (1, 2, 0.8, 1.6), (1, 2, 1.2, 2.0),
+    (1, 3, 0.8, 2.0), (5, 1, 1.2, 2.0), (0, 1, 1.2, 0.0),
+])
+def test_backoff_exponencial_jitter_y_tope(monkeypatch, base, intento, factor, esperado):
+    monkeypatch.setattr(modulo.random, "uniform", lambda minimo, maximo: factor)
+    gestor = GestorProveedores([], 9, backoff_segundos=base)
+    assert gestor._espera_reintento(intento) == pytest.approx(esperado)
+
+
+def test_omite_retry_si_la_espera_invade_la_reserva_groq(monkeypatch):
+    reloj = [0.0]
+    llamadas = []
+    esperar = AsyncMock()
+    monkeypatch.setattr(modulo, "time", SimpleNamespace(monotonic=lambda: reloj[0]))
+    monkeypatch.setattr(modulo, "asyncio", SimpleNamespace(sleep=esperar))
+    monkeypatch.setattr(modulo.random, "uniform", lambda minimo, maximo: 1.2)
+    gestor = GestorProveedores([
+        SimpleNamespace(nombre="gemini", timeout_segundos=6),
+        SimpleNamespace(nombre="groq", timeout_segundos=3),
+    ], 9)
+
+    async def intentar(proveedor, solicitud, limite):
+        llamadas.append((proveedor.nombre, limite))
+        if proveedor.nombre == "gemini":
+            # Una pausa externa deja menos tiempo que el backoff antes de la reserva.
+            reloj[0] = 5.5
+            raise ErrorTemporal(proveedor="gemini")
+        reloj[0] += 2.99
+        return RespuestaLLM("ok", "groq", "prueba")
+
+    gestor._intentar = AsyncMock(side_effect=intentar)
+    assert asyncio.run(gestor.generar_con_respaldo(crear_solicitud())).proveedor == "groq"
+    assert [nombre for nombre, _ in llamadas] == ["gemini", "groq"]
+    assert llamadas[-1][1] == pytest.approx(3)
+    assert reloj[0] <= 9
+    esperar.assert_not_awaited()
 
 
 def test_groq_omitido_por_presupuesto_se_distingue_de_no_configurado(monkeypatch, caplog):

@@ -439,7 +439,25 @@ async def sincronizar_drive_completo(
                 errores.append(ErrorSincronizacion(categoria="liberacion_bloqueo_fallida"))
     for error in errores:
         logger.warning("Sincronización Drive: %s.", error.categoria)
-    return ResumenSincronizacionDrive(
+    resumen = ResumenSincronizacionDrive(
         **contadores, estado="error" if fatal else "parcial" if errores else "ok",
         errores=len(errores), detalles=errores,
+    )
+    # El corpus y la liberación del lease ya finalizaron. T43 es una fase independiente.
+    if not fatal and config.faq_regeneracion_maximo and config.faq_regeneracion_presupuesto_segundos:
+        try:
+            await regenerar_faq_despues_sync(config, gestor)
+        except Exception as error:
+            logger.warning("FAQ pendientes tras sync: tipo=%s.", type(error).__name__)
+    return resumen
+
+
+async def regenerar_faq_despues_sync(config, gestor=None):
+    """No extiende el lock documental ni convierte fallos LLM en errores de indexación."""
+    from app.providers.dependencias import obtener_gestor_proveedores
+    from app.services.curador_faq import regenerar_pendientes
+
+    return await regenerar_pendientes(
+        configuracion=config, gestor_embeddings=gestor or obtener_gestor_embeddings(),
+        gestor_llm=obtener_gestor_proveedores(),
     )

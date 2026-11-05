@@ -61,7 +61,8 @@ class Configuracion(BaseSettings):
     llm_presupuesto_segundos: float = Field(default=9.0, gt=0, allow_inf_nan=False)
     # Sólo el principal se reintenta; cuota y errores permanentes pasan al respaldo.
     llm_reintentos_principal: int = Field(default=1, ge=0, le=1)
-    llm_backoff_segundos: float = Field(default=0.25, ge=0, le=5, allow_inf_nan=False)
+    # Base exponencial con jitter ±20 %; el gestor limita cada espera a 2 s.
+    llm_backoff_segundos: float = Field(default=1.0, ge=0, le=5, allow_inf_nan=False)
 
     # Orden de prioridad de los proveedores. En el entorno se escribe como una lista
     # separada por comas; NoDecode evita que pydantic-settings la espere en JSON.
@@ -112,6 +113,11 @@ class Configuracion(BaseSettings):
     # La confianza es una heurística basada en el mejor coseno, no una probabilidad.
     rag_top_k: int = Field(default=5, gt=0, strict=True)
     rag_umbral_confianza: float = Field(default=0.70, ge=0, le=1, allow_inf_nan=False)
+    umbral_cache_faq: float = Field(default=0.75, ge=0, le=1, allow_inf_nan=False)
+    faq_regeneracion_maximo: int = Field(default=2, ge=0, le=100)
+    faq_regeneracion_presupuesto_segundos: float = Field(
+        default=5.0, ge=0, le=300, allow_inf_nan=False,
+    )
     # Opt-in: calibrar por tipo sin modificar el umbral general ni el score coseno.
     rag_umbral_cronograma: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
     rag_umbral_programa: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
@@ -176,6 +182,8 @@ class Configuracion(BaseSettings):
     # falta alguna de las dos, la aplicación arranca sin base.
     supabase_url: str | None = None
     supabase_key: SecretStr | None = None
+    supabase_backend_key: SecretStr | None = None
+    supabase_timeout_segundos: float = Field(default=5.0, gt=0, le=120, allow_inf_nan=False)
     # Alternativa de despliegue al archivo local; nunca registrar su contenido.
     google_service_account_json: SecretStr | None = None
 
@@ -187,6 +195,7 @@ class Configuracion(BaseSettings):
         "admin_api_token",
         "supabase_url",
         "supabase_key",
+        "supabase_backend_key",
         "google_service_account_json",
         mode="before",
     )

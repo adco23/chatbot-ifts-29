@@ -22,7 +22,7 @@ PREGUNTA = "Cuando es el primer parcial de Tecnicas de Programacion comision F?"
 
 
 def salida(**cambios):
-    return json.dumps(dict(respuesta="El primer parcial es el 30 de septiembre.",
+    return json.dumps(dict(respuesta="El primer parcial corresponde a la semana 8, que inicia el 30 de septiembre.",
                            fragmento_ids=[101]) | cambios)
 
 

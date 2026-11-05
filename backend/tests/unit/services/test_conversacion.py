@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from app.models.chat import ContextoChat, MateriaChat, SolicitudChat
 from app.models.rag import DocumentoPersistido, FragmentoRecuperado, ResultadoRecuperacion
 from app.providers.base import ContenidoBloqueado, RespuestaLLM
+from app.providers.embeddings.base import ResultadoEmbedding
 from app.services import conversacion as c
 from app.services.temporalidad import es_temporal, fechas_respaldadas
 from app.settings import Configuracion
@@ -50,7 +51,9 @@ def entorno(monkeypatch):
     llm = SimpleNamespace(generar_con_respaldo=AsyncMock(
         return_value=RespuestaLLM(salida(), "falso", "modelo")))
     return SimpleNamespace(rag=rag, llm=llm, metadatos=metadatos, documentos=documentos,
-                           materias=materias, embeddings=object())
+                           materias=materias, embeddings=SimpleNamespace(embed_query=AsyncMock(
+                               return_value=ResultadoEmbedding(
+                                   [1.0] + [0.0] * 767, "gemini", "gemini-embedding-001", 768))))
 
 
 def ejecutar(entorno, mensaje="¿Cuándo abre la inscripción?", contexto=None):
@@ -78,7 +81,7 @@ def test_parafrasis_fuentes_prompt_y_gestores(entorno):
 @pytest.mark.parametrize("score,estado", [(0.699, "sin_evidencia"), (0.7, "respondida")])
 def test_umbral(entorno, score, estado):
     entorno.rag.return_value = recuperacion([fragmento(similitud=score)])
-    resultado = ejecutar(entorno)
+    resultado = ejecutar(entorno, "Consulta sobre el calendario institucional.")
     assert resultado.estado == estado
     if estado == "sin_evidencia":
         entorno.llm.generar_con_respaldo.assert_not_called()
@@ -87,7 +90,7 @@ def test_umbral(entorno, score, estado):
 
 def test_sin_resultados_no_llm(entorno):
     entorno.rag.return_value = recuperacion([])
-    assert ejecutar(entorno).estado == "sin_evidencia"
+    assert ejecutar(entorno, "Consulta sin documentación disponible.").estado == "sin_evidencia"
     entorno.llm.generar_con_respaldo.assert_not_called()
 
 
