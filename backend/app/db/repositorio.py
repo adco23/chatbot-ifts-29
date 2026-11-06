@@ -365,6 +365,15 @@ def obtener_firmas_contenido_documentos(
     Sólo se usa para resolver programas de varias comisiones. No equipara documentos
     sin texto ni hace inferencias semánticas. Los errores de conexión son explícitos.
     """
+    fragmentos = obtener_contenidos_documentos(documento_ids, cliente=cliente)
+    return {documento: hashlib.sha256(texto.encode("utf-8")).hexdigest()
+            for documento, texto in fragmentos.items()}
+
+
+def obtener_contenidos_documentos(
+    documento_ids: Sequence[int], *, cliente: Client | None = None,
+) -> dict[int, str]:
+    """Lectura paginada de texto sin vectores; no asigna similitud a los contenidos."""
     ids = list(dict.fromkeys(documento_ids))
     for documento_id in ids:
         _validar_id(documento_id)
@@ -388,12 +397,12 @@ def obtener_firmas_contenido_documentos(
                 raise ErrorRepositorio("Fragmentos inválidos al comparar programas.")
             fragmentos[documento].append((orden, identidad, contenido))
             ultimo_id = identidad
-    firmas = {}
+    contenidos = {}
     for documento, lote in fragmentos.items():
         texto = " ".join(" ".join(f[2].split()) for f in sorted(lote))
         if texto.strip():
-            firmas[documento] = hashlib.sha256(texto.encode("utf-8")).hexdigest()
-    return firmas
+            contenidos[documento] = texto
+    return contenidos
 
 
 def buscar_fragmentos_similares(

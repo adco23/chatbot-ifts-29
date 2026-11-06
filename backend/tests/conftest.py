@@ -43,3 +43,21 @@ def cliente(configuracion_aislada) -> TestClient:
 
     _vaciar_caches()
     return TestClient(app)
+
+
+@pytest.fixture
+def catalogo_historico_f(monkeypatch):
+    """Catálogo sintético explícito de las pruebas anteriores a la política A–D.
+
+    Permite seguir probando eventos/proveedores con sus datos históricos F;
+    las regresiones del catálogo oficial usan el archivo de producción sin este doble.
+    """
+    from app.services import cache_faq, conversacion
+    from app.services.comisiones import CatalogoComisiones
+
+    catalogo = CatalogoComisiones("2026C2", {
+        p: ("A", "B", "C", "D", "F") for p in ("2026C1", "2026C2", "2027C1")
+    })
+    monkeypatch.setattr(conversacion, "cargar_catalogo", lambda: catalogo)
+    monkeypatch.setattr(cache_faq, "cargar_catalogo", lambda: catalogo)
+    return catalogo

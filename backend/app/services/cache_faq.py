@@ -14,6 +14,10 @@ from app.providers.embeddings.base import ResultadoEmbedding
 from app.services.postprocesador import validar_generacion
 from app.services.temporalidad import advertencia_temporal
 from app.services.eventos_cronograma import identificar_evento
+from app.services.comisiones import cargar_catalogo, normalizar_periodo
+from app.services.objetivo_consulta import (
+    contenido_pertinente, faq_compatible, identificar_objetivo,
+)
 from app.services.validacion_embeddings_rag import (
     validar_configuracion_rag,
     validar_resultado_consulta,
@@ -56,14 +60,15 @@ def _fuente_primaria(fuente: FragmentoFuenteFaq, pedido: ContextoFaq) -> bool:
     if pedido.periodo is not None and fuente.periodo != pedido.periodo:
         return False
     if pedido.tipo_documental == "cronograma":
-        return pedido.comision is not None and fuente.comision == pedido.comision
-    return fuente.comision is None or fuente.comision == pedido.comision
+        return pedido.comision is not None and fuente.comision in (pedido.comision, "TODAS")
+    return fuente.comision in (None, "TODAS", pedido.comision)
 
 
 async def buscar_faq(
     texto: str, *, contexto: ContextoChat, tipo_documental: str,
     embedding: ResultadoEmbedding, configuracion: Configuracion,
     resolver_fuentes: Callable[[Sequence[FragmentoRecuperado]], Awaitable[list[FuenteChat]]],
+    catalogo=None,
 ) -> RespuestaChat | None:
     """Una búsqueda. Un candidato inválido produce MISS seguro.
 
@@ -72,7 +77,13 @@ async def buscar_faq(
     """
     validar_configuracion_rag(configuracion)
     validar_resultado_consulta(embedding)
+    catalogo = catalogo or await asyncio.to_thread(cargar_catalogo)
+    periodo = contexto.periodo or catalogo.periodo_activo
+    objetivo = identificar_objetivo(texto)
     try:
+        periodo = normalizar_periodo(periodo)
+        if contexto.comision is not None and not catalogo.admite(contexto.comision, periodo):
+            return None
         pedido = ContextoFaq(
             materia_id=contexto.materia_id, comision=contexto.comision,
             periodo=contexto.periodo, tipo_documental=tipo_documental,
@@ -84,6 +95,8 @@ async def buscar_faq(
             umbral=configuracion.umbral_cache_faq, umbral_evidencia=umbral_evidencia,
         )
         if faq is None:
+            return None
+        if not faq_compatible(texto, faq.pregunta_canonica, faq.respuesta):
             return None
         if tipo_documental == "cronograma":
             solicitado = identificar_evento(texto)
@@ -103,15 +116,25 @@ async def buscar_faq(
         )
         if not evidencia or any(
             fuente.estado_documento != "activo" or fuente.vigente is not True
+            or not catalogo.documento_habilitado(fuente, periodo)
             for fuente in evidencia
         ):
             return None
         for fuente in evidencia:
             for campo in ("materia_id", "comision", "periodo"):
                 valor, requerido = getattr(fuente, campo), getattr(pedido, campo)
+                if campo == "comision" and valor == "TODAS":
+                    continue
                 if valor is not None and valor != requerido:
                     return None
         fragmentos = [fuente.como_fragmento() for fuente in evidencia]
+        originales = {f.fragmento_id: f for f in fragmentos}
+        fragmentos = [f.model_copy(update={"contenido": contenido_pertinente(
+            f.contenido, objetivo, f.titulo,
+        )}) for f in fragmentos]
+        fragmentos = [f for f in fragmentos if f.contenido.strip()]
+        if not fragmentos:
+            return None
         primarios = None
         if pedido.tipo_documental in ("programa", "cronograma"):
             primarios = [fuente.fragmento_id for fuente in evidencia
@@ -129,6 +152,7 @@ async def buscar_faq(
         }), fragmentos, fragmento_ids_primarios=primarios,
             documento_ids_permitidos={f.documento_id for f in fragmentos},
             consulta=texto if pedido.tipo_documental == "cronograma" else None)
+        usados = [originales[f.fragmento_id] for f in usados]
         fuentes = await resolver_fuentes(usados)
         esperados = {
             identidad: {f.fragmento_id for f in usados if f.documento_id == identidad}

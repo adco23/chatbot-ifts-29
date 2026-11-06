@@ -39,9 +39,10 @@ def salida(**cambios):
 
 
 @pytest.fixture
-def entorno(monkeypatch):
+def entorno(monkeypatch, catalogo_historico_f):
     materias = Mock(return_value=[MateriaChat(id=3, codigo="PROG", nombre="Programación")])
-    documentos = Mock(return_value=[DocumentoPersistido(id=2, titulo="Calendario", drive_id="abc")])
+    documentos = Mock(return_value=[DocumentoPersistido(
+        id=2, titulo="Calendario", drive_id="abc", estado="activo", vigente=True)])
     rag = AsyncMock(return_value=recuperacion([fragmento()]))
     metadatos = Mock(return_value={"id": "abc", "webViewLink": "https://drive.google.com/a"})
     monkeypatch.setattr(c.repositorio, "listar_materias_chat", materias)
@@ -96,7 +97,9 @@ def test_sin_resultados_no_llm(entorno):
 
 @pytest.mark.parametrize("campo,valor", [("materia_id", 3), ("comision", "A")])
 def test_contexto_solo_si_evidencia_lo_necesita(entorno, campo, valor):
-    entorno.documentos.return_value = []
+    entorno.documentos.return_value = [DocumentoPersistido(
+        id=2, titulo="Calendario", drive_id="abc", estado="activo", vigente=True,
+        **{campo: valor})]
     entorno.rag.return_value = recuperacion([fragmento(**{campo: valor})])
     resultado = ejecutar(entorno)
     assert resultado.estado == "requiere_contexto"
@@ -106,20 +109,23 @@ def test_contexto_solo_si_evidencia_lo_necesita(entorno, campo, valor):
 
 
 def test_reintenta_corpus_si_general_insuficiente(entorno):
-    entorno.rag.side_effect = [recuperacion([]), recuperacion([fragmento(materia_id=3)])]
+    entorno.documentos.return_value.append(DocumentoPersistido(
+        id=9, titulo="Calendario específico", drive_id="esp", estado="activo",
+        vigente=True, materia_id=3))
+    entorno.rag.side_effect = [recuperacion([]), recuperacion([fragmento(documento_id=9, materia_id=3)])]
     assert ejecutar(entorno).campo_requerido == "materia_id"
-    assert entorno.rag.call_args_list[1].kwargs["documento_ids"] is None
+    assert entorno.rag.call_args_list[1].kwargs["documento_ids"] == [2, 9]
 
 
 def test_resuelve_nombre_y_continua_pregunta_pendiente(entorno):
     resultado = ejecutar(entorno, "Programación, comisión A", ContextoChat(
-        consulta_pendiente="¿Cuándo abre la inscripción?", periodo="2026",
+        consulta_pendiente="¿Cuándo abre la inscripción?", periodo="2026C2",
     ))
     assert resultado.contexto.materia_id == 3
     assert resultado.contexto.comision == "A"
     assert resultado.contexto.consulta_pendiente is None
     filtros = entorno.rag.call_args.kwargs["filtros"]
-    assert filtros.materia_id == 3 and filtros.comision == "A" and filtros.periodo == "2026"
+    assert filtros.materia_id == 3 and filtros.comision == "A" and filtros.periodo == "2026C2"
     assert "¿Cuándo abre" in entorno.rag.call_args.args[0]
 
 

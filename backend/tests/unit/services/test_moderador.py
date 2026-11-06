@@ -27,12 +27,28 @@ def cache_catalogo_aislada():
 
 @pytest.fixture
 def vocabulario():
-    return json.loads(moderador.RUTA_CATALOGO.read_text(encoding="utf-8"))
+    # Datos sintéticos estables: el equipo puede ampliar el catálogo real libremente.
+    return {
+        "insultos": ["pelotudo", "tarado", "idiota", "imbecil", "sorete", "soreta",
+                     "forro", "gil", "salame"],
+        "insultos_aislados": ["pelotudo", "tarado", "idiota", "imbecil"],
+        "groserias_contextuales": ["mierda"],
+        "amenazas_frases": ["te voy a matar"],
+        "discriminacion_frases": ["de mierda", "son inferiores"],
+        "incitaciones_discriminatorias": ["hay que exterminar a"],
+        "terminos_grupo": ["negro", "inmigrante", "extranjero", "gay"],
+    }
 
 
 def escribir_catalogo(ruta, datos):
     ruta.write_text(json.dumps(datos, ensure_ascii=False), encoding="utf-8")
     return ruta
+
+
+def test_catalogo_real_sigue_siendo_valido_y_no_activa_respaldo():
+    datos = json.loads(moderador.RUTA_CATALOGO.read_text(encoding="utf-8"))
+    validados = moderador._validar_catalogo(datos)
+    assert cargar_catalogo().insultos == validados["insultos"]
 
 
 @pytest.mark.parametrize("texto", [

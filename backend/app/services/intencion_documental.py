@@ -7,12 +7,25 @@ from app.services.sanitizador import normalizar_comparacion
 from app.settings import Configuracion
 
 
-def es_consulta_institucional(texto: str) -> bool:
-    """Inicio/fin del ciclo sin materia: alcance institucional, no otra intención."""
+def es_consulta_administrativa(texto: str) -> bool:
+    """El objetivo de un trámite prima sobre menciones incidentales a exámenes."""
     consulta = normalizar_comparacion(texto)
-    return bool(re.search(
+    if re.search(r"\b(?:certificados?|constancias?|tramites?)\b", consulta):
+        return True
+    return bool(re.search(r"\b(?:bedelia|secretaria(?: academica)?)\b", consulta)) and not bool(
+        re.search(r"\b(?:cronogramas?|programas?|contenidos?|parcial(?:es)?|examen(?:es)?)\b",
+                  consulta)
+    )
+
+
+def es_consulta_institucional(texto: str) -> bool:
+    """Alcance general: trámites, listado de materias o inicio/fin del ciclo."""
+    consulta = normalizar_comparacion(texto)
+    return es_consulta_administrativa(texto) or bool(re.search(
         r"\b(?:inicio|fin|comienzo|comienz\w*|comenz\w*|empez\w*|empiez\w*|"
-        r"inici\w*|termin\w*)\b.{0,40}\b(?:clases|ciclo lectivo|cuatrimestre)\b",
+        r"inici\w*|termin\w*)\b.{0,40}\b(?:clases|ciclo lectivo|cuatrimestre)\b"
+        r"|\b(?:que|cuales son|listado de|lista de)\s+(?:las )?(?:materias|asignaturas)\b"
+        r"|\bplan de estudios\b",
         consulta,
     ))
 

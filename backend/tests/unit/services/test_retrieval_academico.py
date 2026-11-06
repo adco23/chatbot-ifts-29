@@ -132,7 +132,7 @@ def test_top_k_no_desplaza_primaria_y_deduplica(monkeypatch):
 
 
 @pytest.fixture
-def entorno_academico(monkeypatch):
+def entorno_academico(monkeypatch, catalogo_historico_f):
     filas = [fragmento(), fragmento(2, "programa", None),
              fragmento(3, "general", None, materia_id=None, similitud=0.99)]
     materias = [MateriaChat(id=47, codigo="TP", nombre="Técnicas de Programación")]

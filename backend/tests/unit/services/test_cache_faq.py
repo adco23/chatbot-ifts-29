@@ -34,7 +34,7 @@ def evidencia(**cambios):
 
 
 @pytest.fixture
-def entorno(monkeypatch):
+def entorno(monkeypatch, catalogo_historico_f):
     config = SimpleNamespace(
         embedding_primary="gemini", gemini_embedding_modelo="gemini-embedding-001",
         gemini_embedding_dimension=768, umbral_cache_faq=0.75,
