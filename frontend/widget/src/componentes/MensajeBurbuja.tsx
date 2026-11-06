@@ -114,7 +114,13 @@ function ContenidoBot({ mensaje, esUltimo, enviando, acciones }: PropsContenido)
               alElegir={acciones.elegirContexto}
             />
           )}
-          {respuesta.estado === 'sin_evidencia' && <BloqueDerivacion consulta={mensaje.consulta} />}
+          {(respuesta.estado === 'sin_evidencia' || respuesta.estado === 'derivada') && (
+            <BloqueDerivacion
+              consulta={mensaje.consulta}
+              derivacion={respuesta.derivacion}
+              correo={respuesta.correo_prearmado}
+            />
+          )}
           {respuesta.advertencia_temporal && (
             <Recordatorio texto={respuesta.advertencia_temporal} />
           )}

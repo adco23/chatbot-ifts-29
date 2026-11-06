@@ -1,6 +1,7 @@
 """Punto de entrada de la API: crea la aplicación y registra los routers."""
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import admin, chat, health
 from app.settings import obtener_configuracion
@@ -12,6 +13,20 @@ def crear_app() -> FastAPI:
     app = FastAPI(
         title="Asistente virtual · IFTS N.° 29",
         version=config.version_app,
+    )
+
+    # El widget se sirve desde otro origen y llama a POST /chat. El middleware responde
+    # el preflight antes del ruteo, así que OPTIONS no consume el límite por sesión.
+    # Authorization queda afuera: /admin lo llama el cron desde el servidor, no el
+    # navegador. Retry-After se expone para que el widget lea la espera del 429.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=config.cors_origenes,
+        allow_methods=["POST"],
+        allow_headers=["Content-Type", "X-Sesion-Id"],
+        expose_headers=["Retry-After"],
+        allow_credentials=False,
+        max_age=600,
     )
 
     app.include_router(health.router)

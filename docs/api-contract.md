@@ -44,9 +44,45 @@ El widget envía la solicitud con `credentials: 'omit'`: no manda cookies.
   "umbral": 0.6,
   "advertencia_temporal": "Verificá la información vigente en el canal institucional oficial del IFTS 29.",
   "contexto": { "materia_id": 2, "comision": "A", "periodo": null, "consulta_pendiente": null },
-  "campo_requerido": null
+  "campo_requerido": null,
+  "derivacion": null,
+  "correo_prearmado": null
 }
 ```
+
+`derivacion` y `correo_prearmado` siempre vienen en la respuesta. Valen `null` salvo cuando `estado = "derivada"`, y en ese caso los dos son obligatorios.
+
+#### Respuesta derivada
+
+Cuando no hay evidencia suficiente pero la consulta coincide con un sector de `backend/app/config/derivaciones.json` (por nombre o palabra clave), el backend responde:
+
+```json
+{
+  "estado": "derivada",
+  "respuesta": "No cuento con evidencia suficiente para responder esa consulta. Podés consultar a Secretaría Académica.",
+  "fuentes": [],
+  "confianza": 0.0,
+  "umbral": 0.7,
+  "advertencia_temporal": null,
+  "contexto": { "materia_id": null, "comision": null, "periodo": null, "consulta_pendiente": null },
+  "campo_requerido": null,
+  "derivacion": {
+    "sector": "Secretaría Académica",
+    "correo": "secretaria@ifts29.edu.ar",
+    "horario": "Martes y Jueves de 19:00 a 21:00",
+    "responsable": "Secretaría"
+  },
+  "correo_prearmado": {
+    "destinatario": "secretaria@ifts29.edu.ar",
+    "asunto": "Consulta de estudiante - IFTS 29",
+    "cuerpo": "Hola,\n\nQuisiera realizar una consulta relacionada con gestiones estudiantiles del IFTS 29.\n\nMuchas gracias."
+  }
+}
+```
+
+- `responsable` puede ser `null`.
+- `correo_prearmado.destinatario` siempre coincide con `derivacion.correo`.
+- La plantilla del correo es fija y no incluye el texto de la consulta (RNF01).
 
 ### Cómo muestra el widget cada estado
 
@@ -54,7 +90,8 @@ El widget envía la solicitud con `credentials: 'omit'`: no manda cookies.
 |---|---|
 | `respondida` | Burbuja con `respuesta` y una tarjeta por cada elemento de `fuentes` (título y "Descargar" si hay `enlace`), según RF02. |
 | `requiere_contexto` | Burbuja con la pregunta y selector de materia (`campo_requerido = "materia_id"`) o de comisión (`"comision"`), según RF03. |
-| `sin_evidencia` | Burbuja con `respuesta` y bloque de derivación (RF05) con sector, correo, horario y un botón `mailto:` prearmado que envía el propio estudiante. **Los datos del sector son estáticos del front** (`src/config/derivaciones.ts`, copiados de `backend/app/config/derivaciones.json`), porque la respuesta no los trae. |
+| `derivada` | Burbuja con `respuesta` y bloque de derivación (RF05) con los datos de `derivacion`: sector, contacto (si viene `responsable`), correo y horario. El botón "Escribir a {sector}" abre un `mailto:` armado con `correo_prearmado`, y lo envía el propio estudiante. |
+| `sin_evidencia` | Burbuja con `respuesta` y el mismo bloque de derivación, pero con un sector de respaldo: el backend no eligió ninguno. **Esos datos son estáticos del front** (`src/config/derivaciones.ts`, Bedelía) y el `mailto:` lo arma el widget, con la consulta recortada a 500 caracteres. |
 | `bloqueada` | Advertencia de netiqueta diferenciada (RF10). |
 | cualquiera con `advertencia_temporal` | Recordatorio de verificación debajo de la respuesta (RF07). |
 
@@ -82,26 +119,12 @@ Si `VITE_API_URL` está vacía, el widget usa `src/api/clienteMock.ts`, que imit
 - Un insulto (por ejemplo, "idiota"): `bloqueada`.
 - `parcial`, `cronograma`, `examen` o `Mi cursada`: pide materia y comisión.
 - `plan de estudio`: respuesta con fuente PDF.
+- Una palabra clave de `derivaciones.json` (por ejemplo "equivalencias", "título" o "pase" para Secretaría Académica, o "correlativas" o "certificado de alumno regular" para Bedelía): `derivada`, con el mismo correo prearmado que el backend.
 - Cualquier otra cosa: `sin_evidencia`.
 
 ## Pendiente del lado del backend
 
-1. **CORS (bloqueante para el cliente real).** `backend/app/main.py` no tiene `CORSMiddleware`. El widget se sirve desde otro origen, así que el navegador va a bloquear la llamada hasta que se agregue algo como esto:
-
-   ```python
-   from fastapi.middleware.cors import CORSMiddleware
-
-   app.add_middleware(
-       CORSMiddleware,
-       allow_origins=["https://<widget>.vercel.app", "http://localhost:5173"],
-       allow_methods=["POST"],
-       allow_headers=["Content-Type", "X-Sesion-Id"],
-       expose_headers=["Retry-After"],
-       allow_credentials=False,
-   )
-   ```
-
-   `expose_headers=["Retry-After"]` hace falta para que el widget pueda leer la espera del 429.
+1. **CORS (resuelto, falta configurarlo en Vercel).** `backend/app/main.py` registra `CORSMiddleware` con los orígenes de la variable `CORS_ORIGENES` (lista separada por comas; por defecto `http://localhost:5173`). Permite `POST` con `Content-Type` y `X-Sesion-Id`, y expone `Retry-After` para que el widget lea la espera del 429. En el proyecto del backend en Vercel hay que cargar `CORS_ORIGENES` con la URL real del widget (por ejemplo `https://<widget>.vercel.app`, sin barra final). Si no se carga, el navegador bloquea el cliente real en producción.
 
 2. **Ids de materias.** El front asume `1 Técnicas de Programación`, `2 Administración de Base de Datos`, `3 Elementos de Análisis Matemático` y `4 Lógica Computacional`, según el orden del `INSERT` de `0001_esquema_inicial.sql`. Habría que confirmarlo o exponer `GET /materias`.
 
@@ -112,6 +135,5 @@ Ninguna es necesaria para que el widget funcione. Si se agregan, el front las ap
 | Propuesta | Para qué |
 |---|---|
 | `categoria?: str` en `SolicitudChat` (slugs `primeros-pasos-moodle`, `mi-cursada`, `asistencia-entregas`, `plan-de-estudios`, `tramites-siu`, `ayuda-tecnica`) | Que el chip de tema llegue como dato y no solo como texto, alineado con el campo `categoria` del modelo de datos. |
-| `derivacion?: { sector, correo, horario }` en `RespuestaChat` cuando `estado = "sin_evidencia"` | Derivar al sector que corresponde según la consulta (hoy el front muestra siempre Bedelía). |
 | `GET /materias` y comisiones por materia | Reemplazar las listas de ejemplo del front (`src/config/materias.ts` y `comisiones.ts`). |
 | `POST /encuesta` con `{ puntaje: 1..5, comentario? }` | Hoy la encuesta (RF11) queda solo en el navegador y no se envía. |

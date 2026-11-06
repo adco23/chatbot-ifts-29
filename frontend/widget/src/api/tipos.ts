@@ -24,9 +24,28 @@ export interface FuenteChat {
   fragmento_ids: number[];
 }
 
-export type EstadoRespuesta = 'respondida' | 'requiere_contexto' | 'sin_evidencia' | 'bloqueada';
+export type EstadoRespuesta =
+  'respondida' | 'requiere_contexto' | 'sin_evidencia' | 'bloqueada' | 'derivada';
 
 export type CampoRequerido = 'materia_id' | 'comision';
+
+/** RF05: sector al que el backend deriva la consulta. Solo viene con `estado = "derivada"`. */
+export interface DerivacionChat {
+  sector: string;
+  correo: string;
+  horario: string;
+  responsable: string | null;
+}
+
+/**
+ * Correo armado por el backend con una plantilla fija, sin datos del estudiante.
+ * `destinatario` coincide con `derivacion.correo`.
+ */
+export interface CorreoPrearmado {
+  destinatario: string;
+  asunto: string;
+  cuerpo: string;
+}
 
 export interface RespuestaChat {
   estado: EstadoRespuesta;
@@ -39,6 +58,10 @@ export interface RespuestaChat {
   /** Contexto resuelto por el backend. El widget lo reenvía tal cual en la consulta siguiente. */
   contexto: ContextoChat;
   campo_requerido: CampoRequerido | null;
+  /** No nulo solo cuando `estado = "derivada"`. */
+  derivacion: DerivacionChat | null;
+  /** No nulo solo cuando `estado = "derivada"`. */
+  correo_prearmado: CorreoPrearmado | null;
 }
 
 export const LARGO_MAXIMO_MENSAJE = 2000;

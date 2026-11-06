@@ -172,6 +172,42 @@ class Configuracion(BaseSettings):
     limite_solicitudes_maximo: int = Field(default=10, gt=0)
     limite_solicitudes_ventana_segundos: float = Field(default=60.0, gt=0, allow_inf_nan=False)
 
+    # --- CORS ---
+    # Orígenes exactos desde los que el navegador puede llamar a la API (el del widget).
+    # En el entorno se escribe como una lista separada por comas. Vacía: no se permite
+    # ningún origen cruzado. Por defecto, el servidor de desarrollo de Vite.
+    cors_origenes: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
+
+    @field_validator("cors_origenes", mode="before")
+    @classmethod
+    def _normalizar_cors_origenes(cls, valor: object) -> object:
+        """Separa la lista, quita espacios, la barra final y los duplicados.
+
+        Rechaza el comodín y los valores sin esquema http:// o https://.
+        """
+        if isinstance(valor, str):
+            valor = valor.split(",")
+        if not isinstance(valor, list | tuple):
+            return valor
+
+        origenes: list[str] = []
+        for elemento in valor:
+            origen = str(elemento).strip().rstrip("/")
+            if not origen:
+                continue
+            if origen == "*":
+                raise ValueError(
+                    "CORS_ORIGENES no admite '*': hay que indicar los orígenes exactos."
+                )
+            if not origen.startswith(("http://", "https://")):
+                raise ValueError(
+                    f"Origen inválido en CORS_ORIGENES: '{origen}'. "
+                    "Debe empezar con http:// o https://."
+                )
+            if origen not in origenes:
+                origenes.append(origen)
+        return origenes
+
     # --- API de administración (RNF11) ---
     # Token compartido que exigen las rutas de administración. Sin token, o con uno
     # demasiado corto, esas rutas rechazan todas las solicitudes.

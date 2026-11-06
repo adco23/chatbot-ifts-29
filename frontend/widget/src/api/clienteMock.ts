@@ -4,6 +4,8 @@ import {
   ErrorApi,
   type CampoRequerido,
   type ContextoChat,
+  type CorreoPrearmado,
+  type DerivacionChat,
   type EstadoRespuesta,
   type FuenteChat,
   type RespuestaChat,
@@ -13,13 +15,14 @@ import {
 /*
  * Cliente simulado para desarrollar sin backend. Imita el flujo de
  * backend/app/services/conversacion.py: reenvío de `contexto`, `consulta_pendiente`,
- * pedido de materia y comisión, y recordatorio temporal (RF07).
+ * pedido de materia y comisión, recordatorio temporal (RF07) y derivación a un sector (RF05).
  *
  * Frases para probar estados a mano (sin distinguir mayúsculas ni tildes):
  *   "simular error"     → 503
  *   "simular limite"    → 429 con Retry-After
  *   "simular arranque"  → demora larga (arranque en frío, RNF04)
  *   "tonto", "idiota"…  → bloqueada (RF10)
+ *   "equivalencias", "correlativas", "inscripción"… → derivada (RF05)
  */
 
 const RECORDATORIO =
@@ -28,6 +31,43 @@ const SIN_EVIDENCIA =
   'No cuento con evidencia suficiente para responder esa consulta. ' +
   'Verificá la información en el canal institucional oficial del IFTS 29.';
 const UMBRAL = 0.6;
+
+interface SectorSimulado {
+  derivacion: DerivacionChat;
+  palabrasClave: readonly string[];
+}
+
+/** Copiado de backend/app/config/derivaciones.json. */
+const SECTORES: readonly SectorSimulado[] = [
+  {
+    derivacion: {
+      sector: 'Bedelía',
+      correo: 'bedelia@ifts29.edu.ar',
+      horario: 'Lunes a Viernes de 18:30 a 21:30',
+      responsable: 'Equipo de Bedelía',
+    },
+    palabrasClave: ['inscripcion', 'materias', 'correlativas', 'certificado de alumno regular'],
+  },
+  {
+    derivacion: {
+      sector: 'Secretaría Académica',
+      correo: 'secretaria@ifts29.edu.ar',
+      horario: 'Martes y Jueves de 19:00 a 21:00',
+      responsable: 'Secretaría',
+    },
+    palabrasClave: ['equivalencias', 'titulo', 'pase', 'analitico'],
+  },
+];
+
+/** Igual que `generar_correo_prearmado` del backend: plantilla fija, sin la consulta. */
+const correoPrearmado = ({ correo }: DerivacionChat): CorreoPrearmado => ({
+  destinatario: correo,
+  asunto: 'Consulta de estudiante - IFTS 29',
+  cuerpo:
+    'Hola,\n\n' +
+    'Quisiera realizar una consulta relacionada con gestiones estudiantiles del IFTS 29.' +
+    '\n\nMuchas gracias.',
+});
 
 const TEMPORAL =
   /\b(fecha\w*|inscrip\w*|examen\w*|cronograma\w*|horario\w*|final(es)?|parcial\w*)\b/;
@@ -110,7 +150,12 @@ export class ClienteMock implements ClienteChat {
     const responder = (
       estado: EstadoRespuesta,
       respuesta: string,
-      extras: { fuentes?: FuenteChat[]; campo?: CampoRequerido; contexto?: ContextoChat } = {},
+      extras: {
+        fuentes?: FuenteChat[];
+        campo?: CampoRequerido;
+        contexto?: ContextoChat;
+        derivacion?: DerivacionChat;
+      } = {},
     ): RespuestaChat => ({
       estado,
       respuesta,
@@ -120,6 +165,8 @@ export class ClienteMock implements ClienteChat {
       advertencia_temporal: advertencia,
       contexto: extras.contexto ?? { ...contexto, consulta_pendiente: null },
       campo_requerido: extras.campo ?? null,
+      derivacion: extras.derivacion ?? null,
+      correo_prearmado: extras.derivacion ? correoPrearmado(extras.derivacion) : null,
     });
 
     if (OFENSIVO.test(texto)) return responder('bloqueada', 'No puedo procesar esa solicitud.');
@@ -153,6 +200,16 @@ export class ClienteMock implements ClienteChat {
     const guion = GUIONES.find((g) => g.patron.test(texto));
     if (guion) return responder('respondida', guion.respuesta, { fuentes: guion.fuentes ?? [] });
 
+    const derivacion = buscarSector(texto);
+    if (derivacion) {
+      return responder(
+        'derivada',
+        'No cuento con evidencia suficiente para responder esa consulta. ' +
+          `Podés consultar a ${derivacion.sector}.`,
+        { derivacion },
+      );
+    }
+
     return responder('sin_evidencia', SIN_EVIDENCIA);
   }
 }
@@ -162,6 +219,19 @@ function normalizar(texto: string): string {
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
     .toLowerCase();
+}
+
+/**
+ * Como `find_referral_department`: el primer sector cuyo nombre o palabra clave aparece como
+ * palabra completa. `texto` ya viene normalizado (sin tildes, en minúsculas).
+ */
+function buscarSector(texto: string): DerivacionChat | undefined {
+  const palabras = ` ${texto.replace(/[^\p{L}\d]+/gu, ' ')} `;
+  return SECTORES.find(({ derivacion, palabrasClave }) =>
+    [derivacion.sector, ...palabrasClave].some((clave) =>
+      palabras.includes(` ${normalizar(clave)} `),
+    ),
+  )?.derivacion;
 }
 
 function resolverContexto(contexto: ContextoChat, texto: string): void {
