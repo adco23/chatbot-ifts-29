@@ -95,19 +95,22 @@ Después de editarlo, probá en local que la API arranque y que pasen las prueba
 
 **2. Reemplazar los dominios de ejemplo en `frontend/widget/vercel.json` (bloqueante para el embebido).**
 
-El encabezado `Content-Security-Policy` define qué sitios pueden mostrar el widget dentro de un iframe. Hoy tiene dominios de ejemplo:
+El encabezado `Content-Security-Policy` define qué sitios pueden mostrar el widget dentro de un iframe. Hoy ya tiene la URL real de moodle-sim; el dominio del campus sigue siendo de ejemplo:
 
 ```text
-frame-ancestors 'self' https://campus.example.edu.ar https://moodle-sim.example.vercel.app
+frame-ancestors 'self' https://campus.example.edu.ar https://appminds-moodle-sim.vercel.app
 ```
 
-Hay que poner la URL real de moodle-sim y, cuando se sepa, la del campus. Por ejemplo:
+Cuando se sepa, hay que reemplazar `https://campus.example.edu.ar` por la URL real del campus. Cada origen va con esquema, sin barra final y sin ruta.
 
-```text
-frame-ancestors 'self' https://appminds-moodle-sim.vercel.app https://campus.ejemplo.edu.ar
-```
+Si un sitio no está en esa lista, el navegador se niega a mostrar el iframe. Este archivo forma parte del deploy, así que el cambio tiene que estar commiteado en la rama de producción.
 
-Si la URL de moodle-sim no está en esa lista, el navegador se niega a mostrar el iframe. Este archivo forma parte del deploy, así que el cambio tiene que estar commiteado en la rama de producción.
+Si el widget no aparece y las herramientas de desarrollo muestran el iframe como `(blocked:other)` (en *Issues*: "Content Security Policy… frame-ancestors"):
+
+1. Revisá qué CSP sirve Vercel: `curl -I https://appminds-widget.vercel.app/`.
+2. Si es la correcta, el navegador está usando encabezados viejos de su caché. Borrá los datos del sitio del widget (*Application → Storage → Clear site data*), marcá *Disable cache* en la pestaña *Network* o probá en una ventana de incógnito. Recargar moodle-sim con Ctrl+Shift+R puede no alcanzar, porque el iframe es otro documento.
+
+Por eso el `index.html` del widget se sirve con `Cache-Control: no-store`. Si solo cambian los encabezados, el HTML sigue igual y Vercel responde `304 Not Modified` sin la CSP nueva, así que el navegador se queda con la vieja.
 
 ---
 
