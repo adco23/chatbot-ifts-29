@@ -54,6 +54,23 @@ def test_total_conflictivo_o_respuesta_con_otro_numero_se_rechaza():
     assert not total_plan_respaldado(consulta, [texto], respuesta="No tengo el total.")
 
 
+@pytest.mark.parametrize("numero", [17, 23, 31])
+def test_etiqueta_total_de_unidades_curriculares_respaldada(numero):
+    texto = f"Total: {numero} unidades curriculares."
+    consulta = "¿Cuántas materias tiene la carrera?"
+    assert total_plan_respaldado(consulta, [texto], respuesta=f"Son {numero} unidades curriculares.")
+    assert not total_plan_respaldado(consulta, [texto], respuesta="Son 6 materias.")
+    assert contenido_pertinente(texto, "plan_estudios", "GENERAL__Plan-de-estudios-TSDS.docx")
+
+
+@pytest.mark.parametrize("texto", [
+    "Subtotal: 23 unidades curriculares.", "Total: 23 horas.", "Hay 23 fragmentos.",
+    "Primer cuatrimestre: Total: 4 unidades curriculares.",
+])
+def test_etiqueta_total_no_acepta_subtotales_ni_otros_campos(texto):
+    assert not total_plan_respaldado("¿Cuántas materias tiene la carrera?", [texto])
+
+
 @pytest.mark.parametrize("consulta,objetivo", [
     ("¿Cuáles son las materias del primer cuatrimestre?", "plan_estudios"),
     ("¿Qué materias tengo al principio de la cursada?", "plan_estudios"),

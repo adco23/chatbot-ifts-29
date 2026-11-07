@@ -244,7 +244,8 @@ def test_advertencia_temporal_paridad_hit_miss(
     entorno.fuentes_faq.return_value = [fuente]
     entorno.buscar_faq.return_value = coincidencia(
         pregunta_canonica=consulta, respuesta=contenido, tipo_documental=tipo,
-        materia_id=fuente.materia_id, comision=fuente.comision, periodo="2026C2",
+        materia_id=fuente.materia_id, comision=fuente.comision,
+        periodo=None if consulta == "Plan de estudios" else "2026C2",
     )
     hit = preguntar(http, consulta, contexto)
     assert hit.status_code == 200 and hit.json()["estado"] == "respondida"

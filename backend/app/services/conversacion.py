@@ -42,10 +42,13 @@ from app.services.temporalidad import advertencia_temporal
 from app.services.eventos_cronograma import (
     contexto_evento, eventos_en_texto, identificar_evento, respalda_evento,
 )
-from app.services.comisiones import cargar_catalogo, normalizar_comision, normalizar_periodo
+from app.services.comisiones import (
+    CatalogoComisiones, cargar_catalogo, normalizar_comision, normalizar_periodo,
+)
 from app.services.objetivo_consulta import (
     OBJETIVOS_DIRIGIDOS, consulta_dirigida, contenido_pertinente,
-    identificar_objetivo, respuesta_compatible, texto_abstencion, total_plan_respaldado,
+    es_consulta_total_plan, identificar_objetivo, respuesta_compatible,
+    texto_abstencion, total_plan_respaldado,
 )
 from app.services.seleccion_evidencia import seleccionar
 
@@ -68,6 +71,27 @@ class GeneracionDocumental:
     embedding: ResultadoEmbedding
     filtros: FiltrosRecuperacion
     fuentes_versionadas: list[FragmentoFuenteFaq]
+
+
+@dataclass(frozen=True)
+class _CatalogoProgramas:
+    """Excepción de lectura curricular; no amplía el catálogo oficial de cronogramas."""
+
+    catalogo: CatalogoComisiones
+    periodo_comisiones: str
+    periodo_explicito: str | None
+
+    def documento_habilitado(self, documento, periodo=None):
+        if documento.tipo_documental != "programa":
+            return self.catalogo.documento_habilitado(documento, periodo)
+        try:
+            propio = normalizar_periodo(documento.periodo) if documento.periodo is not None else None
+        except ValueError:
+            return False
+        if self.periodo_explicito is not None and propio != self.periodo_explicito:
+            return False
+        comision = normalizar_comision(documento.comision)
+        return comision in (None, "TODAS") or self.catalogo.admite(comision, self.periodo_comisiones)
 
 
 def _coincide(documento, filtros):
@@ -261,43 +285,58 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
         contexto = _resolver_contexto(contexto, texto, materias, catalogo=catalogo)
     except ValueError:
         return responder("sin_evidencia", "No encontré información para ese período en el catálogo disponible.")
-    periodo_elegido = contexto.periodo or catalogo.periodo_activo
-    if periodo_elegido not in catalogo.periodos:
-        contexto = contexto.model_copy(update={"consulta_pendiente": None})
-        return responder("sin_evidencia", "No encontré información para ese período en el catálogo disponible.")
-    if contexto.comision is not None and not catalogo.admite(contexto.comision, periodo_elegido):
-        invalida = (contexto.comision if re.fullmatch(r"[A-Z0-9]{1,32}", contexto.comision)
-                    else "indicada")
-        contexto = contexto.model_copy(update={"comision": None,
-            "consulta_pendiente": pendiente or solicitud.mensaje})
-        opciones = catalogo.comisiones(periodo_elegido)
-        listado = ", ".join(opciones[:-1]) + (f" o {opciones[-1]}" if len(opciones) > 1 else opciones[0])
-        return responder("requiere_contexto",
-            f"No encuentro la comisión {invalida} entre las comisiones disponibles para este período. "
-            f"Indicame si tu comisión es {listado}.", campo_requerido="comision")
     intencion = clasificar_intencion_documental(texto, config)
     institucional = (es_consulta_administrativa(texto)
                      or (contexto.materia_id is None and contexto.comision is None
                          and es_consulta_institucional(texto)))
-    if institucional:
+    if institucional or objetivo in OBJETIVOS_DIRIGIDOS:
         intencion = "general"
     if objetivo in OBJETIVOS_DIRIGIDOS:
-        intencion = "general"
         institucional = True
+    contexto_busqueda = contexto
+    if objetivo == "plan_estudios":
+        # El plan es institucional; conservar la memoria académica en la respuesta.
+        contexto_busqueda = contexto.model_copy(update={
+            "materia_id": None, "comision": None, "periodo": None,
+        })
+    periodo_elegido = contexto_busqueda.periodo or catalogo.periodo_activo
+    if periodo_elegido not in catalogo.periodos and intencion != "programa":
+        contexto = contexto.model_copy(update={"consulta_pendiente": None})
+        return responder("sin_evidencia", "No encontré información para ese período en el catálogo disponible.")
+    periodo_comisiones = (periodo_elegido if periodo_elegido in catalogo.periodos
+                          else catalogo.periodo_activo)
+    if (contexto_busqueda.comision is not None
+            and not catalogo.admite(contexto_busqueda.comision, periodo_comisiones)):
+        invalida = (contexto.comision if re.fullmatch(r"[A-Z0-9]{1,32}", contexto.comision)
+                    else "indicada")
+        contexto = contexto.model_copy(update={"comision": None,
+            "consulta_pendiente": pendiente or solicitud.mensaje})
+        opciones = catalogo.comisiones(periodo_comisiones)
+        listado = ", ".join(opciones[:-1]) + (f" o {opciones[-1]}" if len(opciones) > 1 else opciones[0])
+        return responder("requiere_contexto",
+            f"No encuentro la comisión {invalida} entre las comisiones disponibles para este período. "
+            f"Indicame si tu comisión es {listado}.", campo_requerido="comision")
     advertencia = advertencia_temporal(texto, tipo_documental=intencion)
     academica = intencion in ("programa", "cronograma")
     if academica and contexto.periodo is None:
         contexto = contexto.model_copy(update={"periodo": periodo_elegido})
+        contexto_busqueda = contexto
     evento = identificar_evento(texto) if intencion == "cronograma" else None
     umbral = config.umbral_rag_para_tipo(intencion) if academica else config.rag_umbral_confianza
     filtros = FiltrosRecuperacion(
-        materia_id=contexto.materia_id, comision=contexto.comision, periodo=contexto.periodo,
+        materia_id=contexto_busqueda.materia_id, comision=contexto_busqueda.comision,
+        periodo=contexto_busqueda.periodo,
         tipo_documental=intencion if academica else None,
     )
-    faltantes = [campo for campo in ("materia_id", "comision") if getattr(contexto, campo) is None]
+    catalogo_busqueda = catalogo
+    if intencion == "programa":
+        explicito = bool(re.search(r"\b[0-9]{4}(?:c[12]|-[12]c)\b", normalizar_comparacion(texto)))
+        filtros = filtros.model_copy(update={"periodo": contexto.periodo if explicito else None})
+        catalogo_busqueda = _CatalogoProgramas(catalogo, periodo_comisiones, filtros.periodo)
+    faltantes = [campo for campo in ("materia_id", "comision") if getattr(filtros, campo) is None]
     documentos = await asyncio.to_thread(repositorio.listar_documentos_chat)
     documentos = [d for d in documentos if d.estado == "activo" and d.vigente is True
-                  and catalogo.documento_habilitado(d, periodo_elegido)]
+                  and catalogo_busqueda.documento_habilitado(d, periodo_elegido)]
     permitidos = {d.id for d in documentos}
     embedding_dirigido = None
 
@@ -323,10 +362,10 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
                 comunes = [d.id for d in documentos if d.id in seleccion_ids
                            and d.comision == "TODAS" and d.materia_id == filtros.materia_id
                            and d.tipo_documental == filtros.tipo_documental
-                           and d.periodo == filtros.periodo]
+                           and (filtros.periodo is None or d.periodo == filtros.periodo)]
                 if comunes:
                     # La RPC genérica puede leer alcance TODAS sin modificar el SQL.
-                    # Los IDs ya verificaron materia, tipo y período exactos.
+                    # Los IDs ya verificaron materia, tipo y el período cuando fue solicitado.
                     comun = await recuperar_fragmentos(
                         texto, filtros=FiltrosRecuperacion(periodo=filtros.periodo),
                         documento_ids=comunes, gestor=embeddings, configuracion=config,
@@ -336,7 +375,7 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
                     primarios = [f.model_copy(update={"tipo_documental": por_id[f.documento_id].tipo_documental})
                                  for f in comun.fragmentos if f.documento_id in comunes
                                  and f.materia_id == filtros.materia_id and f.comision == "TODAS"
-                                 and f.periodo == filtros.periodo
+                                 and (filtros.periodo is None or f.periodo == filtros.periodo)
                                  and (evento is None or respalda_evento(f.contenido, evento))]
                     candidatos = [f for f in datos.fragmentos
                                   if f.fragmento_id in (datos.fragmento_ids_primarios or [])]
@@ -345,7 +384,7 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
                         "fragmento_ids_primarios": [f.fragmento_id for f in [*candidatos, *primarios]],
                     })
             return seleccionar(datos, documentos=documentos, objetivo=objetivo,
-                               limite=config.rag_top_k, catalogo=catalogo, periodo=periodo_elegido)
+                               limite=config.rag_top_k, catalogo=catalogo_busqueda, periodo=periodo_elegido)
 
         datos = await buscar(await vectorizar())
         if objetivo in OBJETIVOS_DIRIGIDOS and not datos.evidencia_suficiente and seleccion_ids:
@@ -374,8 +413,8 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
         cobertura = [d for d in documentos if d.tipo_documental == intencion
                      and d.estado == "activo" and d.vigente is True
                      and (contexto.materia_id is None or d.materia_id == contexto.materia_id)
-                     and (contexto.periodo is None or d.periodo is not None
-                          and normalizar_comparacion(d.periodo) == normalizar_comparacion(contexto.periodo))]
+                     and (filtros.periodo is None or d.periodo is not None
+                          and normalizar_comparacion(d.periodo) == normalizar_comparacion(filtros.periodo))]
         if contexto.materia_id is None:
             return pedir_contexto("materia_id")
         especificos = any(d.comision not in (None, "TODAS") for d in cobertura)
@@ -412,11 +451,15 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
     # Una búsqueda después de resolver también las aclaraciones T36.
     if usar_cache:
         hit = await buscar_faq(
-            texto, contexto=contexto, tipo_documental=intencion if academica else "general",
+            texto, contexto=contexto_busqueda, tipo_documental=intencion if academica else "general",
             embedding=await vectorizar(), configuracion=config, resolver_fuentes=resolver_fuentes,
             catalogo=catalogo,
         )
         if hit is not None:
+            if objetivo == "plan_estudios":
+                hit = hit.model_copy(update={
+                    "contexto": contexto.model_copy(update={"consulta_pendiente": None}),
+                })
             return hit
     if academica:
         resultado = await recuperar(seleccion_programas)
@@ -483,6 +526,15 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
     if not total_plan_respaldado(texto, [f.contenido for f in fragmentos]):
         return responder("sin_evidencia", abstencion, resultado)
     instrucciones = _PROMPT.read_text(encoding="utf-8")
+    if es_consulta_total_plan(texto):
+        # Para este total sólo son citables los fragmentos que lo demuestran por sí
+        # mismos. Conservar arriba la guarda conjunta para rechazar contradicciones.
+        fragmentos = [f for f in fragmentos if total_plan_respaldado(texto, [f.contenido])]
+        instrucciones += (
+            "\nRespondé el total únicamente desde su declaración documental explícita "
+            "y citá el fragmento que la contiene. No calcules el total contando listas "
+            "de materias ni fragmentos."
+        )
     if objetivo in OBJETIVOS_DIRIGIDOS:
         instrucciones += (
             "\nRespondé al objetivo solicitado. Una definición no explica un procedimiento. "

@@ -42,7 +42,8 @@ def _es_primario(fragmento, filtros, modalidad):
         and filtros.vigente is not False
         and (filtros.periodo is None or fragmento.periodo is not None
              and fragmento.periodo.strip().upper() == filtros.periodo.strip().upper())
-        and (fragmento.comision is None if modalidad == "comun" else
+        and ((fragmento.comision is None or filtros.tipo_documental == "programa"
+              and fragmento.comision == "TODAS") if modalidad == "comun" else
              filtros.comision is not None and fragmento.comision is not None
              and fragmento.comision.strip().upper() == filtros.comision.strip().upper())
     )

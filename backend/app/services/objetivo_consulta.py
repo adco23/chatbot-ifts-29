@@ -24,6 +24,7 @@ _TOTAL_PLAN = re.compile(
     rf"esta compuest[oa] por)\s+(?:(?:un )?total de\s+)?([1-9][0-9]{{0,2}})\s+{_UNIDADES}\b"
     rf"|\btotal(?: de {_UNIDADES})?\s+(?:del|de la)\s+{_ALCANCE_PLAN}"
     rf"\s*:\s*([1-9][0-9]{{0,2}})\b"
+    rf"|\btotal\s*:\s*([1-9][0-9]{{0,2}})\s+unidades curriculares\b"
 )
 _CANTIDAD_UNIDADES = re.compile(rf"\b([1-9][0-9]{{0,2}})\s+{_UNIDADES}\b")
 _ALCANCE_PARCIAL = re.compile(
@@ -45,7 +46,7 @@ def es_consulta_total_plan(texto: str) -> bool:
 def _totales_plan_explicitos(texto: str) -> set[int]:
     # Sólo declaraciones de total del plan/carrera, nunca un recuento de chunks.
     oraciones = re.split(r"(?<=[.!?;])\s+|\n+", normalizar_comparacion(texto))
-    return {int(match[1] or match[2]) for oracion in oraciones
+    return {int(match[1] or match[2] or match[3]) for oracion in oraciones
             if not _ALCANCE_PARCIAL.search(oracion)
             for match in _TOTAL_PLAN.finditer(oracion)}
 
