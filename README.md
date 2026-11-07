@@ -131,6 +131,72 @@ Para Google Cloud, `GOOGLE_APPLICATION_CREDENTIALS` normalmente indica la ruta a
 
 No subir al repositorio el archivo `.env`, las claves privadas ni los archivos de credenciales. Se recomienda incluirlos en `.gitignore` y compartirlos únicamente mediante los mecanismos seguros definidos por el equipo.
 
+## Frontend: desarrollo local
+
+El front está en `frontend/` y tiene dos proyectos independientes, ambos con Vite:
+
+| Proyecto | Descripción | URL local |
+|---|---|---|
+| `frontend/widget` | Widget del chatbot (React + TypeScript) | http://localhost:5173 |
+| `frontend/moodle-sim` | Simulación de un aula de Moodle que embebe el widget en un iframe, solo para pruebas | http://localhost:5174 |
+
+Los puertos son fijos (`strictPort`). Si alguno está ocupado, Vite no arranca en lugar de usar otro puerto, porque el embebido depende de esas URL.
+
+### Requisitos
+
+- Node.js 20.19 o superior (requisito de Vite 8) y npm.
+
+### 1. Levantar el widget
+
+En una terminal:
+
+```bash
+cd frontend/widget
+cp .env.example .env
+npm install
+npm run dev
+```
+
+Variables de `frontend/widget/.env`:
+
+| Variable | Descripción |
+|---|---|
+| `VITE_API_URL` | URL base del backend, sin barra final. Si queda vacía, el widget usa un cliente mock con respuestas simuladas y no necesita el backend. |
+| `VITE_ORIGENES_PADRE` | Orígenes de la página que embebe el widget, separados por coma. Para desarrollo local, `http://localhost:5174`. |
+| `VITE_PREGUNTAS_SUGERIDAS` | `true` para mostrar preguntas sugeridas. Por defecto, `false`. |
+
+### 2. Levantar la simulación de Moodle
+
+En otra terminal, con el widget ya corriendo:
+
+```bash
+cd frontend/moodle-sim
+cp .env.example .env
+npm install
+npm run dev
+```
+
+Variable de `frontend/moodle-sim/.env`:
+
+| Variable | Descripción |
+|---|---|
+| `VITE_WIDGET_URL` | Origen del widget, sin barra final. En desarrollo, `http://localhost:5173`. Tiene que ser un origen distinto al de moodle-sim, para que el iframe sea cross-origin como en el campus real. |
+
+Después, abrir http://localhost:5174 en el navegador.
+
+En Windows con PowerShell, reemplazar `cp` por `Copy-Item`.
+
+### Otros comandos
+
+Disponibles en los dos proyectos:
+
+| Comando | Descripción |
+|---|---|
+| `npm run build` | Genera la versión de producción en `dist/` |
+| `npm run preview` | Sirve la versión de `dist/` en el mismo puerto de desarrollo |
+| `npm run lint` | Ejecuta ESLint y verifica el formato con Prettier |
+| `npm run format` | Aplica el formato de Prettier |
+
 ## Ejecución de pruebas
 
 El proyecto incluye scripts de prueba para verificar las integraciones y funcionalidades desarrolladas.
