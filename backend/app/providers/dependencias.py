@@ -38,7 +38,17 @@ def crear_proveedor(nombre: str, config: Configuracion) -> ProveedorHTTP:
         api_key=clave.get_secret_value(),
         modelo=getattr(config, f"{nombre}_modelo"),
         timeout_segundos=getattr(config, f"{nombre}_timeout_segundos"),
+        **_opciones_de(nombre, config),
     )
+
+
+def _opciones_de(nombre: str, config: Configuracion) -> dict[str, object]:
+    """Opciones propias de cada proveedor, además de clave, modelo y tiempo máximo."""
+    if nombre == "gemini":
+        return {"nivel_razonamiento": config.gemini_nivel_razonamiento}
+    if nombre == "groq":
+        return {"esfuerzo_razonamiento": config.groq_esfuerzo_razonamiento}
+    return {}
 
 
 def crear_gestor_proveedores(config: Configuracion) -> GestorProveedores:

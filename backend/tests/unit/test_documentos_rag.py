@@ -351,3 +351,35 @@ def test_interfaz_legada_reutiliza_extraccion_y_conserva_error(tmp_path):
     )
     error = extractores.extract_text(str(tmp_path / "inexistente.pdf"))
     assert error[0]["section"] == "Error"
+
+
+# Muestra real de un PDF exportado desde Google Docs: pypdf devuelve cada palabra como
+# bloque propio. Tres líneas en blanco seguidas marcan un párrafo real.
+PDF_PALABRA_POR_BLOQUE = (
+    "las\n \nasignaturas\n \nde\n \nsegundo\n \naño\n \nes\n \nrequisito\n \nobligatorio\n \n"
+    "haber\n \nregularizado\n \nlas\n \ncorrelativas\n \nde\n \nprimer\n \naño;\n \ny\n \n"
+    "para\n \nrendir\n \nlos\n \nexámenes\n \nfinales,\n \nse\n \ndebe\n \ntener\n \nla\n \n"
+    "materia\n \naprobada\n \nsegún\n \nel\n \nplan\n \nde\n \nestudios\n \nvigente.\n \n \n \n"
+    "5.\n \nTrámites\n \ny\n \nSIU\n \nGuaraní"
+)
+
+
+def test_normaliza_pdf_con_una_palabra_por_bloque():
+    texto = extractores._normalizar_texto_pdf(PDF_PALABRA_POR_BLOQUE)
+    assert texto == (
+        "las asignaturas de segundo año es requisito obligatorio haber regularizado las "
+        "correlativas de primer año; y para rendir los exámenes finales, se debe tener la "
+        "materia aprobada según el plan de estudios vigente.\n\n5. Trámites y SIU Guaraní"
+    )
+
+
+@pytest.mark.parametrize("original,esperado", [
+    ("Texto institucional", "Texto institucional"),
+    ("  Primera línea del párrafo\nsegunda línea  \n\n\n\nOtro párrafo\n",
+     "Primera línea del párrafo\nsegunda línea\n\nOtro párrafo"),
+    # Pocas palabras sueltas no alcanzan para considerarlo el artefacto.
+    ("Horarios\n \nde\n \ncursada", "Horarios\n\nde\n\ncursada"),
+    (" \n \n", ""),
+])
+def test_texto_pdf_normal_conserva_sus_saltos(original, esperado):
+    assert extractores._normalizar_texto_pdf(original) == esperado

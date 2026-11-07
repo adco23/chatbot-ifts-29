@@ -161,3 +161,30 @@ def test_config_retry_llm_invalida(monkeypatch, variable, valor):
     monkeypatch.setenv(variable, valor)
     with pytest.raises(ValidationError):
         obtener_configuracion()
+
+
+def test_niveles_de_razonamiento_por_defecto():
+    config = obtener_configuracion()
+    assert config.gemini_nivel_razonamiento == "LOW"
+    assert config.groq_esfuerzo_razonamiento == "low"
+
+
+@pytest.mark.parametrize("variable,valor,campo,esperado", [
+    ("GEMINI_NIVEL_RAZONAMIENTO", " high ", "gemini_nivel_razonamiento", "HIGH"),
+    ("GEMINI_NIVEL_RAZONAMIENTO", "", "gemini_nivel_razonamiento", None),
+    ("GROQ_ESFUERZO_RAZONAMIENTO", "MEDIUM", "groq_esfuerzo_razonamiento", "medium"),
+    ("GROQ_ESFUERZO_RAZONAMIENTO", "  ", "groq_esfuerzo_razonamiento", None),
+])
+def test_niveles_de_razonamiento_se_normalizan(monkeypatch, variable, valor, campo, esperado):
+    monkeypatch.setenv(variable, valor)
+    assert getattr(obtener_configuracion(), campo) == esperado
+
+
+@pytest.mark.parametrize("variable,valor", [
+    ("GEMINI_NIVEL_RAZONAMIENTO", "bajo"), ("GEMINI_NIVEL_RAZONAMIENTO", "none"),
+    ("GROQ_ESFUERZO_RAZONAMIENTO", "minimal"), ("GROQ_ESFUERZO_RAZONAMIENTO", "xhigh"),
+])
+def test_nivel_de_razonamiento_desconocido_lanza_error(monkeypatch, variable, valor):
+    monkeypatch.setenv(variable, valor)
+    with pytest.raises(ValidationError, match=variable):
+        obtener_configuracion()

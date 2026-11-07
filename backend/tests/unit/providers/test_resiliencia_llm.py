@@ -127,6 +127,29 @@ def test_groq_sin_texto_informa_limite_de_tokens(caplog):
     assert "detalle=length" in caplog.text and PRIVADO not in caplog.text
 
 
+def test_groq_vacio_con_stop_se_reintenta_una_vez_sin_espera(caplog):
+    caplog.set_level(logging.INFO)
+    vacio = httpx.Response(200, json={
+        "choices": [{"message": {"content": "", "reasoning": PRIVADO}, "finish_reason": "stop"}],
+    })
+    resultado, llamadas = asyncio.run(escenario([httpx.Response(503)], [vacio, groq_ok()]))
+    assert resultado.proveedor == "groq" and resultado.texto == RESPUESTA
+    assert llamadas == ["gemini", "gemini", "groq", "groq"]
+    assert "detalle=stop" in caplog.text
+    assert "Se reintenta el proveedor groq sin espera" in caplog.text
+    assert PRIVADO not in caplog.text
+
+
+def test_groq_vacio_con_stop_no_se_reintenta_mas_de_una_vez():
+    vacio = httpx.Response(200, json={
+        "choices": [{"message": {"content": ""}, "finish_reason": "stop"}],
+    })
+    resultado, llamadas = asyncio.run(escenario([httpx.Response(503)], [vacio]))
+    assert isinstance(resultado, TodosLosProveedoresFallaron)
+    assert llamadas == ["gemini", "gemini", "groq", "groq"]
+    assert [e.detalle for e in resultado.errores[-2:]] == ["stop", "stop"]
+
+
 def test_timeout_del_gestor_reserva_respaldo_y_cancela_antes_de_retry(caplog):
     activos = 0
 
@@ -142,7 +165,8 @@ def test_timeout_del_gestor_reserva_respaldo_y_cancela_antes_de_retry(caplog):
 
     inicio = time.monotonic()
     resultado, llamadas = asyncio.run(escenario([lento], [groq_ok()], timeout=0.2, presupuesto=0.15))
-    assert resultado.proveedor == "groq" and llamadas == ["gemini", "gemini", "groq"]
+    # El intento agotó la ventana de Gemini: no hay retry y se pasa al respaldo.
+    assert resultado.proveedor == "groq" and llamadas == ["gemini", "groq"]
     assert time.monotonic() - inicio < 0.5 and activos == 0
     assert "causa=timeout" in caplog.text and "detalle=presupuesto_intento" in caplog.text
 

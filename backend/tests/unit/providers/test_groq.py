@@ -53,11 +53,13 @@ def respuesta_de_error(estado: int, **error: Any) -> httpx.Response:
 
 
 def generar(
-    respuesta: httpx.Response | Exception, solicitud: SolicitudLLM | None = None
+    respuesta: httpx.Response | Exception, solicitud: SolicitudLLM | None = None,
+    **opciones: Any,
 ) -> tuple[RespuestaLLM, Captura]:
     captura = Captura(respuesta)
     proveedor = ProveedorGroq(
-        api_key=CLAVE, modelo=MODELO, timeout_segundos=5, cliente=cliente_simulado(captura)
+        api_key=CLAVE, modelo=MODELO, timeout_segundos=5, cliente=cliente_simulado(captura),
+        **opciones,
     )
     return asyncio.run(proveedor.generar(solicitud or crear_solicitud())), captura
 
@@ -231,3 +233,24 @@ def test_repr_no_expone_la_clave():
     assert CLAVE not in str(proveedor)
     assert MODELO in repr(proveedor)
     asyncio.run(proveedor.aclose())
+
+
+@pytest.mark.parametrize("esfuerzo", ["low", "high"])
+def test_envia_esfuerzo_de_razonamiento_si_se_configura(esfuerzo):
+    _, captura = generar(respuesta_ok(), esfuerzo_razonamiento=esfuerzo)
+
+    assert captura.cuerpo["reasoning_effort"] == esfuerzo
+    assert "reasoning_format" not in captura.cuerpo
+
+
+def test_respuesta_json_activa_el_modo_json():
+    _, captura = generar(respuesta_ok(), crear_solicitud(respuesta_json=True))
+
+    assert captura.cuerpo["response_format"] == {"type": "json_object"}
+
+
+def test_sin_opciones_no_envia_razonamiento_ni_formato():
+    _, captura = generar(respuesta_ok())
+
+    assert "reasoning_effort" not in captura.cuerpo
+    assert "response_format" not in captura.cuerpo

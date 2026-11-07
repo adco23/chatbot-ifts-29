@@ -24,6 +24,9 @@ class SolicitudLLM:
     # Si son None, cada proveedor usa su valor por defecto.
     temperatura: float | None = None
     max_tokens: int | None = None
+    # Pide al proveedor que devuelva un objeto JSON (modo JSON de su API). Las
+    # instrucciones deben describir igual el formato esperado.
+    respuesta_json: bool = False
 
 
 @dataclass(frozen=True)

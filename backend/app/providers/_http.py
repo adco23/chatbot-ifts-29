@@ -14,6 +14,8 @@ solicitud ni el cuerpo de la respuesta. Las excepciones de `httpx` se descartan 
 """
 
 import asyncio
+import json
+import os
 import ssl
 from abc import ABC, abstractmethod
 from typing import Any
@@ -70,6 +72,32 @@ def codigos_de_error(respuesta: httpx.Response) -> set[str]:
         for campo in ("code", "status", "type")
         if isinstance(valor := error.get(campo), str)
     }
+
+
+_ENCABEZADOS_CON_CLAVE = frozenset({"x-goog-api-key", "authorization"})
+
+
+def _debug_llm_activo() -> bool:
+    """Indica si hay que imprimir las llamadas a los LLM. Solo para desarrollo.
+
+    Se activa con `DEBUG_LLM=1` en el entorno del proceso (no se lee de `.env`) y nunca
+    en producción: lo impreso incluye la consulta del estudiante (RNF01).
+    """
+    return os.getenv("DEBUG_LLM") == "1" and os.getenv("ENTORNO") != "produccion"
+
+
+def _encabezados_sin_clave(encabezados: dict[str, str]) -> dict[str, str]:
+    return {
+        nombre: "***" if nombre.lower() in _ENCABEZADOS_CON_CLAVE else valor
+        for nombre, valor in encabezados.items()
+    }
+
+
+def _cuerpo_legible(respuesta: httpx.Response) -> str:
+    try:
+        return json.dumps(respuesta.json(), ensure_ascii=False, indent=2)
+    except ValueError:
+        return respuesta.text
 
 
 def _es_falla_de_certificado(error: BaseException) -> bool:
@@ -224,10 +252,31 @@ class ProveedorHTTP(ClienteHTTP, ProveedorLLM):
         except Exception:
             raise self._error_de_estructura() from None
 
-    async def _enviar(self, *args, **kwargs) -> httpx.Response:
+    async def _enviar(
+        self,
+        url: str,
+        encabezados: dict[str, str],
+        cuerpo: dict[str, Any],
+        timeout_segundos: float | None = None,
+    ) -> httpx.Response:
         # El transporte compartido queda intacto. Sólo el LLM añade diagnóstico.
+        debug = _debug_llm_activo()
+        if debug:
+            print(
+                f"[LLM {self.nombre}] REQUEST POST {url}\n"
+                f"Encabezados: {_encabezados_sin_clave(encabezados)}\n"
+                f"{json.dumps(cuerpo, ensure_ascii=False, indent=2)}",
+                flush=True,
+            )
         try:
-            return await super()._enviar(*args, **kwargs)
+            respuesta = await super()._enviar(url, encabezados, cuerpo, timeout_segundos)
+            if debug:
+                print(
+                    f"[LLM {self.nombre}] RESPONSE {respuesta.status_code}\n"
+                    f"{_cuerpo_legible(respuesta)}",
+                    flush=True,
+                )
+            return respuesta
         except ErrorProveedor as error:
             original = error.__context__
             if isinstance(original, (TimeoutError, httpx.TimeoutException)):
@@ -241,6 +290,12 @@ class ProveedorHTTP(ClienteHTTP, ProveedorLLM):
                 error.detalle = "tls" if _es_falla_de_certificado(original) else None
             elif isinstance(error, ErrorNoRecuperable):
                 error.causa = "solicitud_invalida"
+            if debug:
+                print(
+                    f"[LLM {self.nombre}] ERROR {type(error).__name__} "
+                    f"causa={error.causa} detalle={error.detalle}",
+                    flush=True,
+                )
             raise
 
     def _con_estado(self, error: ErrorProveedor, estado: int) -> ErrorProveedor:

@@ -36,6 +36,20 @@ _FINES_POR_BLOQUEO = frozenset({"SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "SP
 class ProveedorGemini(ProveedorHTTP):
     """Genera texto con un modelo de Gemini."""
 
+    def __init__(
+        self,
+        api_key: str,
+        modelo: str,
+        timeout_segundos: float,
+        cliente: httpx.AsyncClient | None = None,
+        *,
+        nivel_razonamiento: str | None = None,
+    ) -> None:
+        super().__init__(api_key, modelo, timeout_segundos, cliente)
+        # `thinkingLevel` (Gemini 3 o posterior). None: no se envía `thinkingConfig`,
+        # que los modelos sin razonamiento rechazan con un error.
+        self._nivel_razonamiento = nivel_razonamiento
+
     @property
     def nombre(self) -> str:
         return "gemini"
@@ -58,7 +72,13 @@ class ProveedorGemini(ProveedorHTTP):
         if solicitud.temperatura is not None:
             configuracion["temperature"] = solicitud.temperatura
         if solicitud.max_tokens is not None:
+            # Incluye los tokens de razonamiento: con un nivel alto pueden agotar el
+            # máximo y dejar la respuesta vacía (finishReason MAX_TOKENS).
             configuracion["maxOutputTokens"] = solicitud.max_tokens
+        if self._nivel_razonamiento is not None:
+            configuracion["thinkingConfig"] = {"thinkingLevel": self._nivel_razonamiento}
+        if solicitud.respuesta_json:
+            configuracion["responseMimeType"] = "application/json"
         if configuracion:
             cuerpo["generationConfig"] = configuracion
         return cuerpo

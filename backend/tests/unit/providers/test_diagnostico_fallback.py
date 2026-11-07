@@ -52,10 +52,18 @@ def test_nueve_segundos_reservan_intento_groq_despues_de_gemini(
     gestor._intentar = AsyncMock(side_effect=intentar)
     resultado = asyncio.run(gestor.generar_con_respaldo(crear_solicitud()))
     assert resultado.proveedor == "groq"
-    assert [p for p, _ in llamadas] == ["gemini", "gemini", "groq"]
-    assert llamadas[0][1] == pytest.approx(2.4)
-    assert llamadas[2][1] == pytest.approx(3)
-    assert esperas == [jitter]
+    # El primer intento de Gemini usa sus 6 s completos: el tiempo no se reparte de
+    # antemano entre intentos.
+    assert llamadas[0] == ("gemini", pytest.approx(6))
+    if consumos[0] == "limite":
+        # Un intento que agotó su tiempo no deja lugar para un retry más corto.
+        assert [p for p, _ in llamadas] == ["gemini", "groq"]
+        assert esperas == []
+    else:
+        assert [p for p, _ in llamadas] == ["gemini", "gemini", "groq"]
+        assert esperas == [jitter]
+        assert llamadas[1][1] == pytest.approx(6 - consumos[0] - jitter)
+    assert llamadas[-1][1] == pytest.approx(3)
     azar.assert_called_once_with(0.8, 1.2)
     assert reloj[0] - 100 <= 9
     assert "fallback a Groq iniciado" in caplog.text and "Groq respondió" in caplog.text

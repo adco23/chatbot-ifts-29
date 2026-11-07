@@ -87,14 +87,61 @@ def _extract_from_pdf(file_path: str | BinaryIO) -> list[dict]:
     extracted_text = []
 
     for page in reader.pages:
-        text = page.extract_text()
+        text = _normalizar_texto_pdf(page.extract_text() or "")
         if text:
-            extracted_text.append(text.strip())
+            extracted_text.append(text)
 
     full_content = "\n\n".join(extracted_text)
 
     # Devolvemos un único bloque general
     return [{"section": "General", "content": full_content}]
+
+
+_MINIMO_HUECOS_ARTEFACTO = 10
+_PROPORCION_HUECOS_SIMPLES = 0.6
+_MAXIMO_PALABRAS_POR_LINEA = 2
+
+
+def _normalizar_texto_pdf(texto: str) -> str:
+    """Limpia los espacios de una página extraída con pypdf.
+
+    Algunos PDF (por ejemplo, los exportados desde Google Docs) ubican cada palabra
+    como un bloque de texto propio, y pypdf devuelve `palabra\\n \\npalabra\\n \\n…`.
+    Ese ruido casi duplica los tokens del prompt y empeora los embeddings. Si la
+    página tiene ese patrón (muchas líneas de una o dos palabras separadas por una
+    línea en blanco), una línea en blanco pasa a ser un espacio y dos o más, un
+    cambio de párrafo. En cualquier otro caso se conservan los saltos simples y los
+    párrafos se reducen a una sola línea en blanco.
+    """
+    lineas: list[str] = []
+    huecos: list[int] = []  # Líneas en blanco antes de cada línea con texto, desde la 2.ª.
+    blancos = 0
+    for linea in texto.splitlines():
+        limpia = linea.strip()
+        if not limpia:
+            blancos += 1
+            continue
+        if lineas:
+            huecos.append(blancos)
+        lineas.append(limpia)
+        blancos = 0
+    if not lineas:
+        return ""
+
+    palabras = sorted(len(linea.split()) for linea in lineas)
+    artefacto = (
+        len(huecos) >= _MINIMO_HUECOS_ARTEFACTO
+        and sum(1 for hueco in huecos if hueco == 1) / len(huecos) >= _PROPORCION_HUECOS_SIMPLES
+        and palabras[len(palabras) // 2] <= _MAXIMO_PALABRAS_POR_LINEA
+    )
+    partes = [lineas[0]]
+    for hueco, linea in zip(huecos, lineas[1:], strict=True):
+        if artefacto:
+            separador = " " if hueco <= 1 else "\n\n"
+        else:
+            separador = "\n" if hueco == 0 else "\n\n"
+        partes.extend((separador, linea))
+    return "".join(partes)
 
 
 def _extract_from_docx(file_path: str | BinaryIO) -> list[dict]:

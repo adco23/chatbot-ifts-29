@@ -4,7 +4,7 @@ import os
 from functools import lru_cache
 from typing import Annotated, Literal, Self
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 NOMBRE_SERVICIO = "asistente-ifts29-api"
@@ -20,6 +20,11 @@ PROVEEDORES_LLM_VALIDOS: tuple[str, ...] = ("gemini", "groq")
 # Nombres válidos de proveedores de embeddings. Coinciden con la propiedad `nombre` de
 # cada implementación de `ProveedorEmbeddings`.
 PROVEEDORES_EMBEDDINGS_VALIDOS: tuple[str, ...] = ("gemini", "cloudflare")
+
+# Niveles de razonamiento admitidos por cada API (documentación consultada el
+# 2026-11-06): `thinkingLevel` de Gemini y `reasoning_effort` de Groq.
+_NIVELES_GEMINI: tuple[str, ...] = ("MINIMAL", "LOW", "MEDIUM", "HIGH")
+_ESFUERZOS_GROQ: tuple[str, ...] = ("low", "medium", "high")
 
 
 class Configuracion(BaseSettings):
@@ -46,9 +51,18 @@ class Configuracion(BaseSettings):
     # Groq: modelo de producción, sin fecha de baja anunciada.
     groq_modelo: str = "openai/gpt-oss-120b"
 
+    # Nivel de razonamiento de cada modelo. Menos razonamiento, menos latencia: con el
+    # nivel por defecto, Gemini 3.8 Flash superaba el tiempo de su intento.
+    # - Gemini (`thinkingLevel`): MINIMAL, LOW, MEDIUM o HIGH. Gemini 3.8 Flash
+    #   rechaza MINIMAL. Vacío: no se envía (modelos sin razonamiento).
+    # - Groq (`reasoning_effort`, sólo GPT-OSS): low, medium o high. Vacío: no se envía.
+    gemini_nivel_razonamiento: str | None = "LOW"
+    groq_esfuerzo_razonamiento: str | None = "low"
+
     # Tiempos máximos por proveedor, en segundos. La meta es responder el 90 % de las
-    # consultas en menos de 10 segundos (RNF05). El gestor reserva tiempo al respaldo;
-    # dentro del presupuesto, cada intento puede tener un límite menor al del adaptador.
+    # consultas en menos de 10 segundos (RNF05). El gestor reserva tiempo al respaldo.
+    # El tiempo del principal no se reparte de antemano entre sus intentos: cada uno
+    # usa todo lo disponible y el retry sólo ocurre si la falla dejó tiempo libre.
     gemini_timeout_segundos: float = Field(default=6.0, gt=0, allow_inf_nan=False)
     groq_timeout_segundos: float = Field(default=3.0, gt=0, allow_inf_nan=False)
 
@@ -241,6 +255,30 @@ class Configuracion(BaseSettings):
         if isinstance(valor, str) and not valor.strip():
             return None
         return valor
+
+    @field_validator("gemini_nivel_razonamiento", "groq_esfuerzo_razonamiento", mode="before")
+    @classmethod
+    def _normalizar_razonamiento(cls, valor: object, info: ValidationInfo) -> object:
+        """Vacío equivale a no enviar el parámetro; si no, valida el nivel.
+
+        Gemini espera el enum en mayúsculas y Groq en minúsculas.
+        """
+        if valor is None:
+            return None
+        if not isinstance(valor, str):
+            return valor
+        nivel = valor.strip()
+        if not nivel:
+            return None
+        if info.field_name == "gemini_nivel_razonamiento":
+            nivel, validos, variable = nivel.upper(), _NIVELES_GEMINI, "GEMINI_NIVEL_RAZONAMIENTO"
+        else:
+            nivel, validos, variable = nivel.lower(), _ESFUERZOS_GROQ, "GROQ_ESFUERZO_RAZONAMIENTO"
+        if nivel not in validos:
+            raise ValueError(
+                f"Valor desconocido en {variable}: '{nivel}'. Válidos: {', '.join(validos)}."
+            )
+        return nivel
 
     @field_validator("embedding_primary", mode="before")
     @classmethod

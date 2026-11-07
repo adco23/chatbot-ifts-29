@@ -359,7 +359,7 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
              "evidencia": "primaria" if primarios is None or f.fragmento_id in primarios else "complementaria"}
             for f in fragmentos
         ], ensure_ascii=False),
-        consulta=texto, temperatura=0.1, max_tokens=1200,
+        consulta=texto, temperatura=0.1, max_tokens=1200, respuesta_json=True,
     )
     fuentes_versionadas = []
     if captura is not None:

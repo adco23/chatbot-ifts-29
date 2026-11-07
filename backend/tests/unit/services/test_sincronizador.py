@@ -358,6 +358,31 @@ def test_explicita_solo_metadata_no_descarga_ni_vectoriza(documento, config, col
     colaboradores.gestor.embed_documents.assert_not_called()
 
 
+def test_forzar_descarga_y_vectoriza_aunque_la_version_no_cambie(
+    documento, config, colaboradores, monkeypatch,
+):
+    from app.models.rag import DocumentoPersistido
+
+    documento = documento.model_copy(
+        update={"drive_modified_time": FECHA, "drive_md5_checksum": "a" * 32},
+    )
+    colaboradores.consultar.return_value = DocumentoPersistido(
+        id=7, drive_id=documento.drive_id, titulo=documento.titulo, indexado_en=FECHA,
+        drive_modified_time=FECHA, drive_md5_checksum="a" * 32,
+    )
+    actualizar = MagicMock(return_value=True)
+    monkeypatch.setattr(sincronizador.repositorio, "actualizar_metadata_documento_sync", actualizar)
+    monkeypatch.setattr(sincronizador, "validar_version_descargada", MagicMock())
+    resultado = asyncio.run(sincronizador.run_full_sync(
+        [documento], configuracion=config, gestor=colaboradores.gestor, forzar=True,
+    ))
+    assert resultado.procesados == 1
+    actualizar.assert_not_called()
+    colaboradores.descargar.assert_called_once()
+    colaboradores.gestor.embed_documents.assert_awaited_once()
+    colaboradores.persistir.assert_called_once()
+
+
 def test_explicita_nombre_invalido_inactiva_con_lease(documento, config, colaboradores, monkeypatch):
     from app.models.rag import DocumentoPersistido
 

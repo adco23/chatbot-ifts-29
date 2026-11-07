@@ -103,18 +103,19 @@ class GestorProveedores:
                 self._timeout_de(p) or restante / (len(siguientes) + 1) for p in siguientes
             )) if siguientes else 0.0
             plazo_proveedor = plazo_global - reserva
-            intentos = 1 + (self._reintentos_principal if indice == 0 else 0)
+            # El principal admite el retry configurado. El respaldo, uno solo y únicamente
+            # si terminó normal pero sin texto (ver `_reintentable_en_respaldo`).
+            intentos = 1 + (self._reintentos_principal if indice == 0 else 1)
             for intento in range(1, intentos + 1):
                 disponible = plazo_proveedor - time.monotonic()
                 if disponible <= 0:
                     break
                 pendientes = intentos - intento
-                # Reservar el jitter máximo antes de repartir el tiempo entre intentos.
-                espera_maxima = min(2.0, self._backoff_segundos * 2 ** (intento - 1) * 1.2)
-                if pendientes and disponible > espera_maxima:
-                    limite = (disponible - espera_maxima) / (pendientes + 1)
-                else:
-                    limite = disponible
+                # El tiempo no se reparte de antemano entre intentos: si el primero se
+                # corta por tiempo, un segundo intento más corto con la misma carga casi
+                # seguro también. Cada intento usa todo lo disponible; el retry sólo
+                # ocurre si la falla dejó tiempo (por ejemplo, un 503 inmediato).
+                limite = disponible
                 timeout = self._timeout_de(proveedor)
                 if timeout is not None:
                     limite = min(limite, timeout)
@@ -145,6 +146,13 @@ class GestorProveedores:
                     if not error.recuperable and not isinstance(error, ErrorNoRecuperable):
                         raise
                     errores.append(error)
+                    if indice > 0:
+                        if pendientes and self._reintentable_en_respaldo(error):
+                            # Sin backoff: no es un problema de carga del servicio.
+                            logger.info("Se reintenta el proveedor %s sin espera.",
+                                        proveedor.nombre)
+                            continue
+                        break
                     if isinstance(error, ErrorTemporal) and pendientes:
                         espera = self._espera_reintento(intento)
                         if plazo_proveedor - time.monotonic() > espera:
@@ -174,6 +182,21 @@ class GestorProveedores:
         """Backoff exponencial con jitter de ±20 %, limitado a dos segundos."""
         return min(2.0, self._backoff_segundos * 2 ** (intento - 1)
                    * random.uniform(0.8, 1.2))
+
+    @staticmethod
+    def _reintentable_en_respaldo(error: ErrorProveedor) -> bool:
+        """El modelo terminó normalmente (`stop`) pero sin texto.
+
+        Pasa, por ejemplo, con modelos de razonamiento que dejan todo en el campo de
+        razonamiento. Volver a muestrear suele resolverlo. Un corte por límite de tokens
+        (`length`, `MAX_TOKENS`) o una estructura inválida se repetirían igual.
+        """
+        return (
+            isinstance(error, ErrorTemporal)
+            and error.causa == "respuesta_invalida"
+            and isinstance(error.detalle, str)
+            and error.detalle.lower() == "stop"
+        )
 
     @staticmethod
     def _timeout_de(proveedor: ProveedorLLM) -> float | None:

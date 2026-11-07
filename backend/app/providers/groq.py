@@ -27,6 +27,20 @@ _CODIGOS_DE_CUOTA = frozenset({"rate_limit_exceeded"})
 class ProveedorGroq(ProveedorHTTP):
     """Genera texto con un modelo alojado en Groq."""
 
+    def __init__(
+        self,
+        api_key: str,
+        modelo: str,
+        timeout_segundos: float,
+        cliente: httpx.AsyncClient | None = None,
+        *,
+        esfuerzo_razonamiento: str | None = None,
+    ) -> None:
+        super().__init__(api_key, modelo, timeout_segundos, cliente)
+        # `reasoning_effort` (sólo GPT-OSS en Groq). None: no se envía, para poder
+        # configurar modelos sin razonamiento.
+        self._esfuerzo_razonamiento = esfuerzo_razonamiento
+
     @property
     def nombre(self) -> str:
         return "groq"
@@ -48,6 +62,12 @@ class ProveedorGroq(ProveedorHTTP):
         if solicitud.max_tokens is not None:
             # `max_tokens` está marcado como obsoleto en la referencia de la API.
             cuerpo["max_completion_tokens"] = solicitud.max_tokens
+        if self._esfuerzo_razonamiento is not None:
+            cuerpo["reasoning_effort"] = self._esfuerzo_razonamiento
+        if solicitud.respuesta_json:
+            # Modo JSON: exige que las instrucciones mencionen JSON. `reasoning_format`
+            # no se envía porque GPT-OSS no lo admite.
+            cuerpo["response_format"] = {"type": "json_object"}
         return cuerpo
 
     def _error_de_estado(self, respuesta: httpx.Response) -> ErrorProveedor:

@@ -356,3 +356,21 @@ def test_baja_se_refleja_en_recuperador_sin_cachear_fragmentos(mundo, monkeypatc
     assert asyncio.run(consulta()).evidencia_suficiente
     assert ejecutar().inactivados == 1
     assert asyncio.run(consulta()).fragmentos == []
+
+
+def test_forzar_reindexa_aunque_la_version_no_cambie(mundo):
+    mundo.archivos.append(drive())
+    mundo.almacen["uno"] = persistido(id=7)
+    resultado = asyncio.run(s.sincronizar_drive_completo(
+        configuracion=Configuracion(), gestor=object(), forzar=True,
+    ))
+    assert resultado.actualizados == 1 and resultado.sin_cambios == 0
+    mundo.indexacion.assert_awaited_once()
+    assert mundo.indexacion.await_args.kwargs["forzar"] is True
+    assert mundo.almacen["uno"].id == 7
+
+
+def test_sin_forzar_no_pasa_el_flag_como_verdadero(mundo):
+    mundo.archivos.append(drive())
+    assert ejecutar().nuevos == 1
+    assert mundo.indexacion.await_args.kwargs["forzar"] is False

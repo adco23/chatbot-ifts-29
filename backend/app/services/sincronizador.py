@@ -173,8 +173,12 @@ async def run_full_sync(
     configuracion: Configuracion | None = None,
     ejecucion_id: str | None = None,
     _catalogo: Sequence[MateriaCatalogo] | None = None,
+    forzar: bool = False,
 ) -> ResultadoSincronizacion:
     """Valida nombres y sólo indexa versiones nuevas; conserva resultados por documento.
+
+    Con `forzar`, reindexa también las versiones ya indexadas (por ejemplo, después de
+    cambiar la extracción o la fragmentación).
 
     Descarga, extracción y persistencia síncronas se delegan a hilos. El lote completo
     de embeddings se valida antes de crear o reemplazar cualquier fila en Supabase.
@@ -200,7 +204,7 @@ async def run_full_sync(
                 categoria = "baja_nombre_invalido_fallida"
                 await _inactivar_invalido(anterior, ejecucion_id)
                 raise error
-            if anterior is not None and not _version_distinta(documento, anterior):
+            if anterior is not None and not forzar and not _version_distinta(documento, anterior):
                 categoria = "actualizacion_metadata_fallida"
                 await asyncio.to_thread(
                     repositorio.actualizar_metadata_documento_sync,
@@ -298,8 +302,11 @@ def _metadata_distinta(documento, anterior, metadata) -> bool:
 
 async def sincronizar_drive_completo(
     *, gestor: GestorEmbeddings | None = None, configuracion: Configuracion | None = None,
+    forzar: bool = False,
 ) -> ResumenSincronizacionDrive:
     """Reconcilia por Drive ID; sólo indexa nuevos o versiones distintas.
+
+    Con `forzar`, reindexa todos los documentos válidos aunque su versión no cambió.
 
     La concesión se renueva cada minuto y antes de cada escritura. Las RPC comprueban
     su vigencia en la transacción para impedir escrituras de un ejecutor vencido.
@@ -372,10 +379,10 @@ async def sincronizar_drive_completo(
             reactivar = anterior is not None and (
                 anterior.estado != "activo" or anterior.vigente is not True
             )
-            if anterior is None or _version_distinta(documento, anterior):
+            if anterior is None or forzar or _version_distinta(documento, anterior):
                 resultado = await run_full_sync(
                     [documento], gestor=gestor, configuracion=config, ejecucion_id=propietario,
-                    _catalogo=catalogo,
+                    _catalogo=catalogo, forzar=forzar,
                 )
                 if resultado.errores or resultado.procesados != 1:
                     categoria = (resultado.resultados[0].error if resultado.resultados

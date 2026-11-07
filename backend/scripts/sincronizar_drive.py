@@ -13,7 +13,11 @@ from pathlib import Path
 def crear_analizador():
     analizador = argparse.ArgumentParser(description=__doc__)
     comandos = analizador.add_subparsers(dest="comando", required=True)
-    comandos.add_parser("ejecutar")
+    ejecutar = comandos.add_parser("ejecutar")
+    ejecutar.add_argument(
+        "--forzar", action="store_true",
+        help="Reindexa todos los documentos aunque su versión en Drive no haya cambiado.",
+    )
     comandos.add_parser("validar-nombres", help="Sólo lee Drive y catálogo; no descarga ni escribe.")
     verificar = comandos.add_parser("verificar")
     verificar.add_argument("--documento-id", type=int, action="append", required=True)
@@ -61,7 +65,7 @@ async def _ejecutar(argumentos):
             # Se usa el gestor central; no se crean adaptadores independientes.
             gestor = obtener_gestor_embeddings()
             gestor_llm = obtener_gestor_proveedores()
-            resumen = await sincronizar_drive_completo(gestor=gestor)
+            resumen = await sincronizar_drive_completo(gestor=gestor, forzar=argumentos.forzar)
             print(resumen.model_dump_json(indent=2))
             return 0 if resumen.estado == "ok" else 1
         if any(i <= 0 for i in argumentos.documento_id) or any(
