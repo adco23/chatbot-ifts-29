@@ -156,7 +156,7 @@ En Vercel se cargan así:
 3. **Root Directory**: tocá *Edit* y elegí `backend`.
 4. **Framework Preset**: tiene que aparecer **FastAPI**. Vercel lo detecta solo porque:
    - `backend/pyproject.toml` declara el punto de entrada (`[tool.vercel] entrypoint = "app.main:app"`);
-   - `backend/requirements.txt` incluye `fastapi`;
+   - la tabla `[project]` de `backend/pyproject.toml` incluye `fastapi`. Cuando hay un `pyproject.toml`, Vercel instala las dependencias desde ahí y **no lee `requirements.txt`**. Las dos listas tienen que coincidir;
    - `backend/.python-version` fija Python 3.12, que Vercel admite.
 5. No hace falta tocar *Build Command* ni *Output Directory*.
 6. Antes de tocar **Deploy**, cargá las variables de entorno (siguiente apartado).
@@ -397,6 +397,7 @@ Cada push a otra rama (o cada pull request) genera un deploy de *Preview* con un
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
 | El build de la API falla por tamaño | `sentence-transformers` o `langchain-huggingface` en `requirements.txt` | Sacarlas (paso 0). |
+| `ModuleNotFoundError: No module named 'fastapi'` (u otro paquete) | La dependencia no está en la tabla `[project]` de `backend/pyproject.toml`. Vercel ignora `requirements.txt` si existe ese archivo | Agregarla en `dependencies` de `pyproject.toml` y volver a desplegar. |
 | Todas las rutas de la API dan 500 | Una variable de entorno inválida | Ver el log de la función en **Logs** y corregir la variable que indica. |
 | `/health` dice `"entorno": "local"` | Falta `ENTORNO=produccion` | Cargarla y hacer *Redeploy*. |
 | El widget responde, pero con respuestas simuladas | Se compiló con `VITE_API_URL` vacía | Cargar la variable y hacer *Redeploy* del widget. |
