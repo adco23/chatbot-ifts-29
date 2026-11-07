@@ -50,6 +50,8 @@ def test_busqueda_por_sector_keywords_mayusculas_y_tildes(consulta, sector):
 
 @pytest.mark.parametrize("consulta", [
     "¿Cuánto gana Messi?", "Messi está de paseo", "titulosidad", "Consulta sin relación", "", "  ",
+    "Quiero saber mis materias", "¿Cuáles son las cuatro materias que debo cursar?",
+    "Tengo dudas sobre correlativas",
 ])
 def test_no_hay_coincidencia_ni_subcadenas(consulta):
     assert derivacion.find_referral_department(consulta) is None

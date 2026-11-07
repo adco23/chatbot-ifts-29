@@ -12,7 +12,8 @@ MAPEO_MATERIAS = {
         "tecnicas", "programacion", "tec prog", "tec. de prog", "programación 1",
     ),
     "Administración de Base de Datos": (
-        "base de datos", "bd", "admin de datos", "sql",
+        "administracion de bases de datos", "base de datos", "bases de datos",
+        "bd", "abd", "admin de datos", "sql",
     ),
     "Elementos de Análisis Matemático": (
         "analisis", "matematica", "analisis matematico", "calculo",

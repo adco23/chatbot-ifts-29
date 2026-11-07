@@ -20,6 +20,15 @@ from tests.unit.services.test_cache_faq import coincidencia
 SESION = {"X-Sesion-Id": "55555555-5555-4555-8555-555555555555"}
 
 
+def periodo_activo():
+    return comisiones.cargar_catalogo().periodo_activo
+
+
+def otro_periodo():
+    catalogo = comisiones.cargar_catalogo()
+    return next(p for p in catalogo.periodos if p != catalogo.periodo_activo)
+
+
 def documento(identidad, **cambios):
     return DocumentoPersistido(**({
         "id": identidad, "titulo": "Información institucional", "drive_id": f"drive-{identidad}",
@@ -110,7 +119,7 @@ def preguntar(http, mensaje, contexto=None):
 
 def agregar(cierre, **cambios):
     doc = documento(10 + len(cierre.documentos), **({"materia_id": 3, "comision": "A",
-                    "periodo": "2027C1", "tipo_documental": "cronograma"} | cambios))
+                    "periodo": periodo_activo(), "tipo_documental": "cronograma"} | cambios))
     cierre.documentos.append(doc)
     cierre.filas.append(fragmento(doc, "Las clases son los lunes."))
     return doc
@@ -121,7 +130,7 @@ def test_comision_oficial_con_documento_responde(http, cierre, comision):
     doc = agregar(cierre, comision=comision.upper())
     r = preguntar(http, f"Cronograma de Análisis Matemático comisión {comision}")
     assert r.status_code == 200 and r.json()["estado"] == "respondida"
-    assert r.json()["contexto"]["periodo"] == "2027C1"
+    assert r.json()["contexto"]["periodo"] == periodo_activo()
     assert r.json()["fuentes"][0]["documento_id"] == doc.id
 
 
@@ -155,8 +164,10 @@ def test_comision_valida_sin_documento_no_se_declara_inexistente(http, cierre):
     cierre.llm.generar_con_respaldo.assert_not_called()
 
 
-@pytest.mark.parametrize("cambios", [{"comision": "F"}, {"periodo": "2026C2"}])
+@pytest.mark.parametrize("cambios", [{"comision": "F"}, {"periodo": "otro"}])
 def test_documento_ajeno_al_catalogo_o_periodo_no_da_evidencia(http, cierre, cambios):
+    if cambios.get("periodo") == "otro":
+        cambios = {"periodo": otro_periodo()}
     agregar(cierre, **cambios)
     r = preguntar(http, "Cronograma de Análisis Matemático comisión A")
     assert r.json()["estado"] == "sin_evidencia" and r.json()["confianza"] == 0
@@ -164,11 +175,12 @@ def test_documento_ajeno_al_catalogo_o_periodo_no_da_evidencia(http, cierre, cam
     cierre.buscar.assert_not_called()
 
 
-def test_historia_explicita_no_se_confunde_con_periodo_activo(http, cierre):
-    agregar(cierre, periodo="2026C2")
-    r = preguntar(http, "Cronograma de Análisis Matemático comisión A de 2026-2C")
+def test_periodo_explicito_no_se_confunde_con_periodo_activo(http, cierre):
+    periodo = otro_periodo()
+    agregar(cierre, periodo=periodo)
+    r = preguntar(http, f"Cronograma de Análisis Matemático comisión A de {periodo}")
     assert r.status_code == 200 and r.json()["estado"] == "respondida"
-    assert r.json()["contexto"]["periodo"] == "2026C2"
+    assert r.json()["contexto"]["periodo"] == periodo
 
 
 def test_todas_aplica_sin_crear_una_comision(http, cierre):
@@ -225,6 +237,9 @@ def test_procedimiento_ausente_orienta_sin_inventar(http, cierre, consulta, sect
 @pytest.mark.parametrize("consulta", [
     "¿Cuáles son las materias del primer cuatrimestre?",
     "¿Qué materias tengo al principio de la cursada?",
+    "¿Cuáles son las cuatro materias que debo cursar?",
+    "¿Qué materias tengo al comenzar la carrera?",
+    "¿Qué materias curso al principio?",
 ])
 def test_plan_de_estudios_descarta_faq_moodle_y_no_infiere_materia(http, cierre, consulta):
     cierre.faq.return_value = coincidencia(pregunta_canonica="¿Dónde aparecen mis materias en Moodle?",
@@ -236,6 +251,42 @@ def test_plan_de_estudios_descarta_faq_moodle_y_no_infiere_materia(http, cierre,
     assert r.json()["fuentes"][0]["documento_id"] == 1
     cierre.faq.assert_called_once()
     cierre.contador.assert_not_called()
+
+
+@pytest.mark.parametrize("consulta", [
+    "¿Cuándo empiezan las clases de bases de datos de la comisión A?",
+    "¿Cuándo empieza bases de datos de la comisión A?",
+    "¿Cuándo son las PFO de bases de datos de la comisión A?",
+    "¿Cuándo son los parciales de bases de datos de la comisión A?",
+    "¿De qué trata la clase 1 de bases de datos de la comisión A?",
+])
+@pytest.mark.parametrize("con_evidencia", [False, True])
+def test_consultas_reales_abd_resuelven_contexto_una_vez(http, cierre, consulta, con_evidencia):
+    cierre.materias.return_value.append(MateriaChat(
+        id=2, codigo="BD", nombre="Administración de Base de Datos"))
+    if con_evidencia:
+        agregar(cierre, materia_id=2, titulo=f"{periodo_activo()}__Administracion-de-Base-de-Datos__COM-A__Cronograma")
+        anio = periodo_activo()[:4]
+        contenido = (f"PFO 1: del 7 al 13 de septiembre de {anio}." if "PFO" in consulta else
+                     f"Primer parcial: 2 de octubre de {anio}." if "parciales" in consulta else
+                     "Clase 1: presentación." if "clase 1" in consulta else
+                     "Las clases comienzan según el calendario.")
+        cierre.filas[-1] = cierre.filas[-1].model_copy(update={
+            "contenido": contenido,
+        })
+    r = preguntar(http, consulta)
+    assert r.status_code == 200
+    datos = r.json()
+    assert datos["estado"] == ("respondida" if con_evidencia else "sin_evidencia")
+    assert datos["contexto"]["materia_id"] == 2 and datos["contexto"]["comision"] == "A"
+    assert datos["contexto"]["periodo"] == periodo_activo()
+    assert datos["campo_requerido"] is None
+    cierre.registrar.assert_not_called()
+    if con_evidencia:
+        assert cierre.buscar.call_args_list[0].kwargs["filtros"].tipo_documental == "cronograma"
+        cierre.llm.generar_con_respaldo.assert_awaited_once()
+    else:
+        cierre.llm.generar_con_respaldo.assert_not_called()
 
 
 def test_procedimiento_no_usa_faq_definicion_y_conserva_original(http, cierre):
@@ -349,8 +400,10 @@ def test_faq_hit_procedimiento_valido_no_llm_y_fuente_original(http, cierre):
     assert "implica cumplir" in cierre.evidencia.return_value[0].contenido
 
 
-@pytest.mark.parametrize("cambio", [{"comision": "F"}, {"periodo": "2026C2"}])
+@pytest.mark.parametrize("cambio", [{"comision": "F"}, {"periodo": "otro"}])
 def test_faq_hit_con_fuente_fuera_del_catalogo_es_miss_sin_acierto(http, cierre, cambio):
+    if cambio.get("periodo") == "otro":
+        cambio = {"periodo": otro_periodo()}
     cierre.faq.return_value = coincidencia(pregunta_canonica="¿Qué significa ser alumno regular?",
                                          respuesta="Ser alumno regular implica cumplir la asistencia.")
     cierre.evidencia.return_value = [fuente_versionada(cierre.filas[1].model_copy(update=cambio))]

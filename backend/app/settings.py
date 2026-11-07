@@ -132,7 +132,7 @@ class Configuracion(BaseSettings):
     rag_terminos_cronograma: Annotated[list[str], NoDecode] = [
         "horario", "horarios", "cronograma", "clase", "clases", "parcial", "parciales",
         "examen", "examenes", "fecha de parcial", "fechas de cursada",
-        "recuperatorio", "recuperatorios",
+        "recuperatorio", "recuperatorios", "pfo",
     ]
     rag_terminos_programa: Annotated[list[str], NoDecode] = [
         "contenido", "contenidos", "programa", "objetivos", "unidades", "temas", "bibliografia",

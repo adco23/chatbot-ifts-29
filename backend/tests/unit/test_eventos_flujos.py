@@ -205,9 +205,8 @@ def test_llm_no_puede_renombrar_ni_tomar_fecha_de_otra_semana(http_academico, mu
         "respuesta": respuesta, "fragmento_ids": [11],
     }), "groq", "simulado")
     r = preguntar(http_academico, PREGUNTA, {"periodo": "2026C2"})
-    assert r.status_code == 503 and respuesta not in r.text
-    with pytest.raises(ValueError):
-        cargar(mundo)
+    assert r.status_code == 200 and r.json()["estado"] == "sin_evidencia" and respuesta not in r.text
+    assert cargar(mundo) is None
     mundo.guardar.assert_not_called()
 
 

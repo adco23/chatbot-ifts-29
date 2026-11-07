@@ -44,6 +44,9 @@ def mundo(monkeypatch):
     bloqueo = Mock(return_value=True)
     catalogo = Mock(return_value=[])
     monkeypatch.setattr(s.repositorio, "listar_materias_chat", catalogo)
+    monkeypatch.setattr(s.repositorio, "obtener_contenidos_documentos", Mock(
+        side_effect=lambda ids, **kwargs: {i: "Contenido sin declaraciones de contexto." for i in ids},
+    ))
 
     async def indexar(documentos, **kwargs):
         assert kwargs["ejecucion_id"]

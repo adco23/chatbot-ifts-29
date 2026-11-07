@@ -3,6 +3,8 @@
 import re
 
 from app.services.sanitizador import normalizar_comparacion, sanitizar_texto
+from app.services.intencion_documental import es_inicio_materia, es_orientacion_primer_dia
+from app.services.eventos_cronograma import normalizar_referencias_pfo
 
 PROCEDIMIENTOS = frozenset({
     "procedimiento_regular", "procedimiento_asistencia", "procedimiento_analitico",
@@ -18,7 +20,7 @@ _ACCION = re.compile(
 
 
 def identificar_objetivo(texto: str) -> str | None:
-    consulta = normalizar_comparacion(texto)
+    consulta = normalizar_referencias_pfo(texto)
     if re.search(r"\b(?:certificados?|constancias?)\b", consulta):
         if "alumno regular" in consulta or "alumna regular" in consulta:
             return "procedimiento_regular"
@@ -34,13 +36,18 @@ def identificar_objetivo(texto: str) -> str | None:
     if re.search(r"\b(?:materias|asignaturas)\b", consulta):
         if re.search(r"\b(?:moodle|matriculad\w*|inscript\w*|asignad\w*)\b", consulta):
             return "matriculacion"
-        if re.search(r"\b(?:primer|primero|iniciales|principio|inicio|plan de estudios)\b", consulta):
+        if re.search(r"\b(?:primer|primero|iniciales|principio|inicio|plan de estudios)\b"
+                     r"|\b(?:debo|deberia|tengo que) cursar\b"
+                     r"|\bal (?:comenzar|empezar|iniciar) (?:la )?carrera\b", consulta):
             return "plan_estudios"
     if "plan de estudios" in consulta:
         return "plan_estudios"
     if re.search(r"\b(?:que (?:significa|es)|definicion)\b.*\balumn[oa] regular\b", consulta):
         return "definicion_regular"
-    if re.search(r"\b(?:cronograma|horarios?|parciales?|recuperatorios?|clases?)\b", consulta):
+    if es_orientacion_primer_dia(texto):
+        return None
+    if (re.search(r"\b(?:cronograma|horarios?|parciales?|recuperatorios?|clases?|pfo)\b", consulta)
+            or es_inicio_materia(texto)):
         return "cronograma"
     return None
 
@@ -62,7 +69,9 @@ def _pertinente(bloque: str, objetivo: str, titulo: str) -> bool:
     if objetivo == "matriculacion":
         return "moodle" in texto and bool(re.search(r"materias|matricul|inscrip|asignad", texto))
     if objetivo == "definicion_regular":
-        return bool(re.search(r"alumn[oa] regular (?:significa|implica|es)", respuesta))
+        return bool(re.search(
+            r"\balumn[oa] regular(?: en (?:el )?ifts\s*(?:n[°ºo.]*\s*)?29)? "
+            r"(?:significa|implica|es)\b", respuesta))
     if objetivo == "promocion":
         return bool(re.search(r"\bpromocion\w*\b", texto) and re.search(
             r"\b(?:nota|calificacion|promedio|eximid\w*|promocionad\w*|acceder)\b", respuesta))
@@ -86,6 +95,25 @@ def _pertinente(bloque: str, objetivo: str, titulo: str) -> bool:
 def contenido_pertinente(texto: str, objetivo: str | None, titulo: str = "") -> str:
     if objetivo not in OBJETIVOS_DIRIGIDOS:
         return texto
+    # Los encabezados delimitan trámites independientes antes de colapsar espacios.
+    tramites = re.split(r"(?=^[ \t]*(?:#{1,6}\s*)?(?:\*\*)?Trámite\s*:)", texto,
+                       flags=re.IGNORECASE | re.MULTILINE)
+    if len(tramites) > 1:
+        seleccionados = []
+        for bloque in tramites:
+            encabezado = re.match(
+                r"\s*(?:#{1,6}\s*)?(?:\*\*)?Trámite\s*:\s*([^\n]+)", bloque,
+                flags=re.IGNORECASE,
+            )
+            if encabezado and objetivo in PROCEDIMIENTOS:
+                # El asunto del encabezado manda sobre menciones incidentales del cuerpo.
+                asunto = identificar_objetivo(encabezado[1])
+                if asunto != objetivo:
+                    continue
+            limpio = sanitizar_texto(bloque)
+            if limpio and _pertinente(limpio, objetivo, titulo):
+                seleccionados.append(limpio)
+        return "\n".join(seleccionados)
     limpio = sanitizar_texto(texto)
     if objetivo == "promocion":
         # Comparar sólo condiciones, no horarios u otros apartados del programa.

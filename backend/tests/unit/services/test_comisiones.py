@@ -5,7 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.comisiones import cargar_catalogo, ErrorCatalogoComisiones, normalizar_periodo
+from app.services.comisiones import (
+    RUTA_CATALOGO, cargar_catalogo, ErrorCatalogoComisiones, normalizar_periodo,
+)
 
 
 def escribir(tmp_path, **cambios):
@@ -21,7 +23,8 @@ def escribir(tmp_path, **cambios):
 @pytest.mark.parametrize("comision", ["A", "B", "C", "D", "a", " b "])
 def test_catalogo_oficial_y_normalizacion(comision):
     catalogo = cargar_catalogo()
-    assert catalogo.periodo_activo == "2027C1"
+    configurado = json.loads(RUTA_CATALOGO.read_text(encoding="utf-8"))["periodo_activo"]
+    assert catalogo.periodo_activo == normalizar_periodo(configurado)
     assert catalogo.admite(comision)
     assert not catalogo.admite("F") and not catalogo.admite("TODAS")
 
@@ -70,11 +73,16 @@ def test_faltante_o_json_roto_es_error_controlado(tmp_path, contenido):
 
 
 @pytest.mark.parametrize("comision,periodo,admite", [
-    (None, None, True), ("TODAS", "2027C1", True), ("A", "2027C1", True),
-    ("F", "2027C1", False), ("A", "2026C2", False), ("A", "2025C1", False),
+    (None, None, True), ("TODAS", "activo", True), ("A", "activo", True),
+    ("F", "activo", False), ("A", "otro", False), ("A", "2025C1", False),
 ])
 def test_documentos_no_crean_comisiones_ni_vigencia(comision, periodo, admite):
-    assert cargar_catalogo().documento_habilitado(
+    catalogo = cargar_catalogo()
+    if periodo == "activo":
+        periodo = catalogo.periodo_activo
+    elif periodo == "otro":
+        periodo = next(p for p in catalogo.periodos if p != catalogo.periodo_activo)
+    assert catalogo.documento_habilitado(
         SimpleNamespace(comision=comision, periodo=periodo),
     ) is admite
 

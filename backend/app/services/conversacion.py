@@ -39,7 +39,9 @@ from app.services.respuestas_locales import respuesta_local
 from app.services.recuperador import recuperar_fragmentos
 from app.services.sanitizador import normalizar_comparacion
 from app.services.temporalidad import advertencia_temporal
-from app.services.eventos_cronograma import contexto_evento, identificar_evento, respalda_evento
+from app.services.eventos_cronograma import (
+    contexto_evento, eventos_en_texto, identificar_evento, respalda_evento,
+)
 from app.services.comisiones import cargar_catalogo, normalizar_comision, normalizar_periodo
 from app.services.objetivo_consulta import (
     OBJETIVOS_DIRIGIDOS, consulta_dirigida, contenido_pertinente,
@@ -81,31 +83,46 @@ def _coincide(documento, filtros):
     return True
 
 
-def _resolver_contexto(contexto, texto, materias):
+def _extraer_comision(texto, comisiones=()):
+    # Los códigos del catálogo pueden crecer sin ampliar esta gramática. Las
+    # letras/códigos breves no oficiales se conservan sólo para su rechazo T36.
+    conocidos = "|".join(re.escape(c.lower()) for c in comisiones)
+    codigo = rf"(?:{conocidos + '|' if conocidos else ''}todas|general|[a-z]|[0-9]{{1,4}}[a-z]?)"
+    patron = (rf"\b(?:comision(?:\s*:\s*|\s+(?:es\s+)?(?:la\s+)?)|"
+              rf"(?:soy\s+de|curso\s+en|pertenezco\s+a)\s+la\s+)({codigo})(?!\w)")
+    for match in re.finditer(patron, texto):
+        # «comisión a la que pertenezco» contiene una preposición, no el código A.
+        if match[1] == "a" and re.match(r"\s+(?:la|las|los|que|cual|cuales)\b", texto[match.end():]):
+            continue
+        return match[1].upper()
+    return None
+
+
+def _resolver_contexto(contexto, texto, materias, *, catalogo=None):
     cambios = {}
     if contexto.materia_id is None:
         materia = resolver_materia(texto, materias)
         if materia is not None:
             cambios["materia_id"] = materia.id
 
-    partes = re.split(r"\baclaracion\s*:\s*", normalizar_comparacion(texto))
-    patron = r"\bcomision\s+(?:es\s+)?([a-z0-9]{1,32})(?!\w)"
-    ultimo = re.search(patron, partes[-1])
-    if contexto.consulta_pendiente and re.fullmatch(r"\s*(?:[a-z]|[0-9]{1,4}[a-z]?)[.!]?\s*", partes[-1]):
-        cambios["comision"] = partes[-1].strip(" .!").upper()
-    elif ultimo:
-        cambios["comision"] = ultimo[1].upper()
-    elif contexto.comision is None:
-        previo = re.search(patron, partes[0])
-        if previo:
-            cambios["comision"] = previo[1].upper()
-    elif contexto.comision is not None:
-        cambios["comision"] = normalizar_comision(contexto.comision)
     periodos = list(re.finditer(r"\b[0-9]{4}(?:c[12]|-[12]c)\b", normalizar_comparacion(texto)))
     if periodos:
         cambios["periodo"] = normalizar_periodo(periodos[-1][0])
     elif contexto.periodo is not None:
         cambios["periodo"] = normalizar_periodo(contexto.periodo)
+    comisiones = catalogo.comisiones(cambios.get("periodo")) if catalogo is not None else ()
+    partes = re.split(r"\baclaracion\s*:\s*", normalizar_comparacion(texto))
+    ultimo = _extraer_comision(partes[-1], comisiones)
+    if contexto.consulta_pendiente and re.fullmatch(r"\s*(?:[a-z]|[0-9]{1,4}[a-z]?)[.!]?\s*", partes[-1]):
+        cambios["comision"] = partes[-1].strip(" .!").upper()
+    elif ultimo:
+        cambios["comision"] = ultimo
+    elif contexto.comision is None:
+        previo = _extraer_comision(partes[0], comisiones)
+        if previo:
+            cambios["comision"] = previo
+    elif contexto.comision is not None:
+        cambios["comision"] = normalizar_comision(contexto.comision)
     return contexto.model_copy(update=cambios)
 
 
@@ -233,7 +250,7 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
     catalogo = await asyncio.to_thread(cargar_catalogo)
     materias = await asyncio.to_thread(repositorio.listar_materias_chat)
     try:
-        contexto = _resolver_contexto(contexto, texto, materias)
+        contexto = _resolver_contexto(contexto, texto, materias, catalogo=catalogo)
     except ValueError:
         return responder("sin_evidencia", "No encontré información para ese período en el catálogo disponible.")
     periodo_elegido = contexto.periodo or catalogo.periodo_activo
@@ -469,12 +486,14 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
             "contexto institucional; no demuestra horarios, contenidos ni fechas específicos. "
             "No sustituyas ni contradigas los datos primarios con información complementaria."
         )
-    if evento is not None:
+    if intencion == "cronograma" and eventos_en_texto(texto):
         instrucciones += (
             "\nRespondé sobre el evento académico solicitado usando sus bloques específicos. "
             "No equipares parcial ordinario, actividad pre-parcial y recuperatorio. "
             "Si la fuente sólo fecha el inicio de una semana, indicá la semana y cuándo "
             "empieza; no afirmes que el examen se toma ese día. No infieras año ni día exacto."
+            " Al enumerar eventos, indicá cada uno en un renglón separado con su identificador "
+            "y su fecha o rango completo. No agrupes fechas sin una asociación individual."
         )
     solicitud_llm = SolicitudLLM(
         instrucciones_sistema=instrucciones,
@@ -536,7 +555,11 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
             )
         registrar_etapa("respuesta_final_validada", proveedor=generado.proveedor)
         return respuesta
-    except ErrorPostproceso:
+    except ErrorPostproceso as error:
+        if intencion == "cronograma" and error.etapa in ("eventos_invalidos", "fechas_invalidas"):
+            registrar_etapa("abstencion_eventos", proveedor=generado.proveedor,
+                            etapa=error.etapa, motivo=error.motivo)
+            return responder("sin_evidencia", abstencion, resultado)
         raise
     except Exception as error:
         registrar_etapa(etapa, proveedor=generado.proveedor, tipo_error=type(error).__name__)

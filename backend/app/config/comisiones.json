@@ -1,12 +1,12 @@
 {
-  "periodo_activo": "2027-1C",
+  "periodo_activo": "2026-2C",
   "periodos": {
     "2026-2C": {
-      "activo": false,
+      "activo": true,
       "comisiones": ["A", "B", "C", "D"]
     },
     "2027-1C": {
-      "activo": true,
+      "activo": false,
       "comisiones": ["A", "B", "C", "D"]
     }
   }

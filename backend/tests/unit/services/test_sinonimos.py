@@ -29,6 +29,8 @@ def catalogo():
     ("Contenidos de tec. de prog", 0), ("PROGRAMACIÓN 1", 0),
     ("Administración de Base de Datos", 1), ("Necesito información de Base de Datos", 1),
     ("Programa de admin de datos", 1), ("¿Qué temas tiene bd?", 1), ("Consulta de SQL", 1),
+    ("Administracion de Base de Datos", 1), ("Administración de Bases de Datos", 1),
+    ("Administracion de Bases de Datos", 1), ("Bases de Datos", 1), ("ABD", 1),
     ("Elementos de Análisis Matemático", 2),
     ("Quiero el cronograma de Análisis Matemático", 2), ("programa de análisis", 2),
     ("Programa de matemática", 2), ("Contenidos de cálculo", 2),
@@ -50,6 +52,7 @@ def test_nombres_aliases_codigos_y_normalizacion(catalogo, texto, indice):
     "programaciones", "analisisadicional", "NoSQL", "superlogica", "subTP", "TPextra",
     "¿Puedo tomar mate?", "Un mate antes del parcial", "Después del parcial voy a tomar mate",
     "mate", "Elementos del programa institucional", "", "\t ",
+    "base", "administración", "datos personales", "subABD", "ABDatos", "superBD",
 ])
 def test_no_infiere_materias_por_subcadenas_o_terminos_genericos(catalogo, texto):
     assert resolver_materia(texto, catalogo) is None
