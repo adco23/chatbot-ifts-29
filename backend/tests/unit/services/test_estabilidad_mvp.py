@@ -80,13 +80,51 @@ def test_listado_general_de_materias_es_institucional():
     assert es_consulta_institucional("¿Qué materias tiene la carrera?")
 
 
-def test_contexto_explicito_no_se_sobrescribe_y_conserva_comision_periodo():
+def test_nueva_materia_explicita_reemplaza_anterior_y_conserva_otros_campos():
     materia = MateriaChat(id=93, codigo="LC", nombre="Lógica Computacional")
     previo = ContextoChat(materia_id=82, consulta_pendiente="Consulta anterior")
     nuevo = conversacion._resolver_contexto(previo, "Lógica, comisión F en 2026C2", [materia])
-    assert nuevo.materia_id == 82 and nuevo.comision == "F" and nuevo.periodo == "2026C2"
+    assert nuevo.materia_id == 93 and nuevo.comision == "F" and nuevo.periodo == "2026C2"
     assert nuevo.consulta_pendiente == "Consulta anterior"
     assert previo.comision is None
+
+
+@pytest.fixture
+def materias_contexto():
+    return [
+        MateriaChat(id=1, codigo="TP", nombre="Técnicas de Programación"),
+        MateriaChat(id=2, codigo="BD", nombre="Administración de Base de Datos"),
+    ]
+
+
+def test_cambio_explicito_de_base_de_datos_a_tecnicas(materias_contexto):
+    anterior = ContextoChat(materia_id=2, comision="A", periodo="2026C2")
+    nuevo = conversacion._resolver_contexto(
+        anterior, "¿Cuándo son los parciales de Técnicas de Programación comisión A?",
+        materias_contexto,
+    )
+    assert nuevo.materia_id == 1 and nuevo.comision == "A" and nuevo.periodo == "2026C2"
+    assert anterior.materia_id == 2
+
+
+def test_aclaracion_b_conserva_materia_y_consulta_pendiente(materias_contexto):
+    pendiente = "¿Cuándo son los parciales de Base de Datos?"
+    anterior = ContextoChat(materia_id=2, periodo="2026C2", consulta_pendiente=pendiente)
+    solicitud = SolicitudChat(mensaje="B", contexto=anterior)
+    nuevo = conversacion._resolver_contexto(
+        anterior, conversacion._texto_consulta(solicitud), materias_contexto,
+    )
+    assert nuevo.materia_id == 2 and nuevo.comision == "B" and nuevo.periodo == "2026C2"
+    assert nuevo.consulta_pendiente == pendiente
+
+
+def test_materia_de_ultima_intervencion_no_se_confunde_con_la_pendiente(materias_contexto):
+    anterior = ContextoChat(materia_id=2, consulta_pendiente="Parciales de Base de Datos")
+    solicitud = SolicitudChat(mensaje="Técnicas de Programación, comisión A", contexto=anterior)
+    nuevo = conversacion._resolver_contexto(
+        anterior, conversacion._texto_consulta(solicitud), materias_contexto,
+    )
+    assert nuevo.materia_id == 1 and nuevo.comision == "A"
 
 
 def test_captura_documental_no_usa_atajos_ni_registro_t40(entorno, monkeypatch):

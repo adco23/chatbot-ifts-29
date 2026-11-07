@@ -14,9 +14,10 @@ solicitud ni el cuerpo de la respuesta. Las excepciones de `httpx` se descartan 
 """
 
 import asyncio
-import json
+import logging
 import os
 import ssl
+import time
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -74,30 +75,16 @@ def codigos_de_error(respuesta: httpx.Response) -> set[str]:
     }
 
 
-_ENCABEZADOS_CON_CLAVE = frozenset({"x-goog-api-key", "authorization"})
+logger = logging.getLogger(__name__)
 
 
 def _debug_llm_activo() -> bool:
-    """Indica si hay que imprimir las llamadas a los LLM. Solo para desarrollo.
+    """Habilita metadatos técnicos de las llamadas LLM, sólo para desarrollo.
 
     Se activa con `DEBUG_LLM=1` en el entorno del proceso (no se lee de `.env`) y nunca
-    en producción: lo impreso incluye la consulta del estudiante (RNF01).
+    en producción. Nunca habilita cuerpos, URLs, encabezados ni textos.
     """
     return os.getenv("DEBUG_LLM") == "1" and os.getenv("ENTORNO") != "produccion"
-
-
-def _encabezados_sin_clave(encabezados: dict[str, str]) -> dict[str, str]:
-    return {
-        nombre: "***" if nombre.lower() in _ENCABEZADOS_CON_CLAVE else valor
-        for nombre, valor in encabezados.items()
-    }
-
-
-def _cuerpo_legible(respuesta: httpx.Response) -> str:
-    try:
-        return json.dumps(respuesta.json(), ensure_ascii=False, indent=2)
-    except ValueError:
-        return respuesta.text
 
 
 def _es_falla_de_certificado(error: BaseException) -> bool:
@@ -261,20 +248,16 @@ class ProveedorHTTP(ClienteHTTP, ProveedorLLM):
     ) -> httpx.Response:
         # El transporte compartido queda intacto. Sólo el LLM añade diagnóstico.
         debug = _debug_llm_activo()
+        inicio = time.monotonic()
         if debug:
-            print(
-                f"[LLM {self.nombre}] REQUEST POST {url}\n"
-                f"Encabezados: {_encabezados_sin_clave(encabezados)}\n"
-                f"{json.dumps(cuerpo, ensure_ascii=False, indent=2)}",
-                flush=True,
-            )
+            logger.debug("llm_http proveedor=%s etapa=request", self.nombre)
         try:
             respuesta = await super()._enviar(url, encabezados, cuerpo, timeout_segundos)
             if debug:
-                print(
-                    f"[LLM {self.nombre}] RESPONSE {respuesta.status_code}\n"
-                    f"{_cuerpo_legible(respuesta)}",
-                    flush=True,
+                logger.debug(
+                    "llm_http proveedor=%s etapa=response http=%d duracion_segundos=%.3f bytes=%d",
+                    self.nombre, respuesta.status_code, time.monotonic() - inicio,
+                    len(respuesta.content),
                 )
             return respuesta
         except ErrorProveedor as error:
@@ -291,10 +274,9 @@ class ProveedorHTTP(ClienteHTTP, ProveedorLLM):
             elif isinstance(error, ErrorNoRecuperable):
                 error.causa = "solicitud_invalida"
             if debug:
-                print(
-                    f"[LLM {self.nombre}] ERROR {type(error).__name__} "
-                    f"causa={error.causa} detalle={error.detalle}",
-                    flush=True,
+                logger.debug(
+                    "llm_http proveedor=%s etapa=error tipo=%s duracion_segundos=%.3f",
+                    self.nombre, type(error).__name__, time.monotonic() - inicio,
                 )
             raise
 

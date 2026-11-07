@@ -72,6 +72,88 @@ def preparar_plan(mvp):
     }), "falso", "modelo")
 
 
+def test_total_plan_parcial_se_abstiene_antes_del_llm(http, mvp):
+    preparar_plan(mvp)
+    mvp.filas.append(mvp.general.model_copy(update={
+        "documento_id": 99, "fragmento_id": 99, "drive_id": "otro-general",
+        "titulo": "GENERAL__Preguntas-frecuentes",
+        "contenido": "La carrera tiene 6 materias.",
+    }))
+    r = preguntar(http, "cuantas materias tiene la cursada")
+    assert r.status_code == 200 and r.json()["estado"] == "sin_evidencia"
+    assert r.json()["campo_requerido"] is None
+    assert r.json()["contexto"]["materia_id"] is None
+    assert mvp.buscar_rag.call_args.kwargs["documento_ids"] == [mvp.general.documento_id]
+    mvp.llm.generar_con_respaldo.assert_not_called()
+    mvp.guardar.assert_not_called()
+
+
+@pytest.mark.parametrize("numero_respuesta,estado", [(17, "respondida"), (6, "sin_evidencia")])
+def test_total_plan_solo_acepta_el_numero_documentado(http, mvp, numero_respuesta, estado):
+    preparar_plan(mvp)
+    mvp.general.contenido = "La carrera tiene un total de 17 unidades curriculares."
+    mvp.llm.generar_con_respaldo.return_value = RespuestaLLM(json.dumps({
+        "respuesta": f"La carrera tiene {numero_respuesta} unidades curriculares.",
+        "fragmento_ids": [mvp.general.fragmento_id],
+    }), "falso", "modelo")
+    r = preguntar(http, "¿Cuántas unidades curriculares tiene la carrera?")
+    assert r.status_code == 200 and r.json()["estado"] == estado
+    assert mvp.buscar_rag.call_args.kwargs["documento_ids"] == [mvp.general.documento_id]
+    mvp.llm.generar_con_respaldo.assert_awaited_once()
+    if estado == "respondida":
+        assert r.json()["fuentes"][0]["documento_id"] == mvp.general.documento_id
+    else:
+        assert r.json()["fuentes"] == []
+
+
+def test_faq_de_total_sin_agregado_documental_es_miss_sin_aciertos(http, mvp):
+    preparar_plan(mvp)
+    mvp.buscar_faq.return_value = coincidencia(
+        pregunta_canonica="¿Cuántas materias tiene la carrera?", respuesta="Hay seis materias.",
+    )
+    mvp.fuentes_faq.return_value = [mvp.general]
+    r = preguntar(http, "¿Cuántas materias tiene la carrera?")
+    assert r.status_code == 200 and r.json()["estado"] == "sin_evidencia"
+    mvp.contador.assert_not_called()
+    mvp.llm.generar_con_respaldo.assert_not_called()
+
+
+def test_faq_total_con_agregado_respaldado_conserva_hit(http, mvp):
+    preparar_plan(mvp)
+    mvp.general.contenido = "El plan de estudios tiene 17 unidades curriculares."
+    mvp.buscar_faq.return_value = coincidencia(
+        pregunta_canonica="¿Cuántas materias tiene la carrera?",
+        respuesta="La carrera tiene 17 unidades curriculares.",
+    )
+    mvp.fuentes_faq.return_value = [mvp.general]
+    r = preguntar(http, "¿Cuántas materias tiene la carrera?")
+    assert r.status_code == 200 and r.json()["estado"] == "respondida"
+    mvp.contador.assert_called_once_with(7)
+    mvp.buscar_rag.assert_not_called()
+    mvp.llm.generar_con_respaldo.assert_not_called()
+
+
+def test_http_materia_nueva_reemplaza_contexto_antes_de_faq_y_rag(http, mvp):
+    r = preguntar(http, "¿Cuándo son los parciales de Técnicas de Programación comisión A?", {
+        "materia_id": 2, "comision": "A", "periodo": "2026C2",
+    })
+    assert r.status_code == 200
+    assert r.json()["contexto"]["materia_id"] == 1
+    assert mvp.buscar_faq.call_args.kwargs["contexto"].materia_id == 1
+
+
+def test_http_requiere_contexto_y_aclaracion_b_conservan_materia(http, mvp):
+    inicial = preguntar(http, "¿Cuándo son los parciales de Base de Datos?")
+    assert inicial.status_code == 200 and inicial.json()["estado"] == "requiere_contexto"
+    contexto = inicial.json()["contexto"]
+    assert contexto["materia_id"] == 2 and contexto["consulta_pendiente"]
+    siguiente = preguntar(http, "B", contexto)
+    assert siguiente.status_code == 200
+    assert siguiente.json()["contexto"]["materia_id"] == 2
+    assert siguiente.json()["contexto"]["comision"] == "B"
+    assert siguiente.json()["contexto"]["periodo"] == "2026C2"
+
+
 @pytest.mark.parametrize("caso,consulta,estado,materia,campo", [
     (1, "Quiero saber los horarios de Bedelía", "derivada", None, None),
     (2, "¿Cómo me contacto con Bedelía?", "derivada", None, None),
@@ -333,10 +415,12 @@ def test_respuesta_local_no_depende_del_catalogo_ni_proveedores(
 def test_hola_no_descarta_pregunta_academica_pendiente(http, mvp, pasos):
     consulta = "Quiero el cronograma de Análisis Matemático"
     r = preguntar(http, "Hola", {"consulta_pendiente": consulta})
-    assert r.status_code == 200 and r.json()["estado"] == "requiere_contexto"
-    assert r.json()["campo_requerido"] == "comision"
+    assert r.status_code == 200 and r.json()["estado"] == "respondida"
+    assert r.json()["respuesta"] == SALUDO
+    assert r.json()["campo_requerido"] is None
     assert r.json()["contexto"]["consulta_pendiente"] == consulta
     pasos.moderar.assert_called_once_with(f"{consulta}\nAclaración: Hola")
+    sin_busqueda_documental(mvp, pasos)
 
 
 @pytest.mark.parametrize("consulta", [

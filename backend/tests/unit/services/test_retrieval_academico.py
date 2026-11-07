@@ -127,6 +127,22 @@ def test_programa_especifico_insuficiente_prueba_comun_con_mismo_embedding(monke
     embeddings.embed_query.assert_awaited_once()
 
 
+@pytest.mark.parametrize("comision", [None, "TODAS"])
+def test_programa_comun_admite_todas_y_periodo_historico_sin_filtro(monkeypatch, comision):
+    comun = fragmento(2, "programa", comision, periodo="2023C1")
+    resultado, _, _ = recuperar(monkeypatch, [[], [comun], []], tipo="programa", comision="C")
+    assert resultado.evidencia_suficiente and resultado.fragmento_ids_primarios == [2]
+    assert resultado.confianza == comun.similitud
+
+
+def test_programa_todas_no_elude_periodo_explicito():
+    comun = fragmento(2, "programa", "TODAS", periodo="2023C1")
+    filtros = FiltrosRecuperacion(materia_id=47, comision="C", periodo="2026C2", tipo_documental="programa")
+    assert not recuperador._es_primario(comun, filtros, "comun")
+    crono = comun.model_copy(update={"tipo_documental": "cronograma", "periodo": "2026C2"})
+    assert not recuperador._es_primario(crono, filtros.model_copy(update={"tipo_documental": "cronograma"}), "comun")
+
+
 def test_top_k_no_desplaza_primaria_y_deduplica(monkeypatch):
     primario = fragmento()
     resultado, _, _ = recuperar(monkeypatch, [[primario], [primario,
