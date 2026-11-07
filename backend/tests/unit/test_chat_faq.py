@@ -23,7 +23,7 @@ SESION = {"X-Sesion-Id": "22222222-2222-4222-8222-222222222222"}
 
 
 @pytest.fixture
-def entorno(monkeypatch):
+def entorno(monkeypatch, catalogo_historico_f):
     general = evidencia()
     cronograma = evidencia(
         fragmento_id=11, documento_id=21, drive_id="drive-cronograma",
@@ -224,7 +224,7 @@ def test_hit_conserva_espacio_cual_comienza_hasta_json_http(http, entorno, caplo
     ("Detalle docente de técnicas", "cronograma", "El detalle docente está publicado.", True),
     ("Contenidos de técnicas", "programa", "Los contenidos incluyen algoritmos.", False),
     ("Descripción de la materia", "general", "La materia enseña programación.", False),
-    ("Plan de estudios", "general", "El plan incluye materias de programación.", False),
+    ("Plan de estudios", "general", "Primer cuatrimestre: programación.", False),
 ])
 def test_advertencia_temporal_paridad_hit_miss(
     http, entorno, monkeypatch, consulta, tipo, contenido, advertida,
@@ -238,6 +238,8 @@ def test_advertencia_temporal_paridad_hit_miss(
         materia_id=47 if academica else None, comision="F" if academica else None,
         periodo="2026C2" if academica else None,
     )
+    if consulta == "Plan de estudios":
+        fuente.titulo = "Plan de estudios"
     entorno.filas[:] = [fuente]
     entorno.fuentes_faq.return_value = [fuente]
     entorno.buscar_faq.return_value = coincidencia(

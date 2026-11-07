@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import logging
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from uuid import uuid4
 
 from langchain_core.documents import Document
@@ -19,6 +20,7 @@ from app.drive.cliente import (
 from app.drive.extractores import extraer_texto_desde_bytes
 from app.models.rag import (
     DocumentoDrive,
+    DocumentoPersistido,
     ErrorSincronizacion,
     FragmentoParaIndexar,
     MetadataDocumental,
@@ -32,6 +34,11 @@ from app.providers.embeddings.dependencias import obtener_gestor_embeddings
 from app.services.metadata_documental import (
     ErrorMetadataDocumental, MateriaCatalogo, resolver_metadata_documental,
 )
+from app.services.coherencia_documental import (
+    ErrorCoherenciaDocumental, ProblemaCoherencia, ResultadoCoherencia,
+    exigir_coherencia_documental, exigir_resultado_coherencia,
+)
+from app.services.sanitizador import normalizar_comparacion
 from app.services.validacion_embeddings_rag import (
     ErrorEmbeddingIncompatible,
     validar_configuracion_rag,
@@ -160,10 +167,134 @@ def _fragmentar_secciones(secciones: object, titulo: str) -> list[Document]:
         nombre = seccion.get("section") or "General"
         if not isinstance(nombre, str):
             raise ValueError("La extracción no produjo una sección indexable.")
-        fragmentos.extend(split_text_into_chunks(seccion["content"], titulo, nombre))
+        contenido = seccion["content"]
+        if contenido.strip() and nombre.strip() and normalizar_comparacion(nombre) != "general":
+            # En DOCX, section contiene el encabezado que el extractor separó del
+            # cuerpo. Debe formar parte del mismo texto vectorizado y persistido.
+            primera_linea = contenido.lstrip().splitlines()[0]
+            if normalizar_comparacion(primera_linea) != normalizar_comparacion(nombre):
+                contenido = f"{nombre.strip()}\n{contenido}"
+        fragmentos.extend(split_text_into_chunks(contenido, titulo, nombre))
     if not fragmentos:
         raise ValueError("El documento no contiene texto indexable.")
     return fragmentos
+
+
+def _texto_para_coherencia(secciones: object) -> str:
+    if not isinstance(secciones, list) or any(
+        not isinstance(s, dict) or not isinstance(s.get("content"), str)
+        or not isinstance(s.get("section", "General"), str) for s in secciones
+    ):
+        raise ValueError("La extracción devolvió secciones inválidas.")
+    # En DOCX, un encabezado puede estar en section en lugar de content.
+    return "\n".join(f"{s.get('section', '')}\n{s['content']}" for s in secciones)
+
+
+async def _validar_contexto_persistido(documento, anterior, metadata):
+    """Revisa texto existente, también al retirar alcance académico.
+
+    section no se persiste en fragmento. En DOCX, cambiar el contexto requiere
+    declaraciones explícitas reconstruibles; su ausencia no demuestra alcance
+    general. No se descargan archivos ni se regeneran embeddings para suplirlas.
+    """
+    campos = ("materia_id", "periodo", "comision")
+    if all(getattr(metadata, c) is None and getattr(anterior, c) is None for c in campos):
+        return
+    contenidos = await asyncio.to_thread(
+        repositorio.obtener_contenidos_documentos, [anterior.id], preservar_estructura=True,
+    )
+    texto = contenidos.get(anterior.id)
+    if not texto or not texto.strip():
+        problema = ProblemaCoherencia(
+            documento=documento.drive_id, categoria="contenido_no_disponible", campo="contenido",
+            metadata_esperada=None, valor_contextual_detectado=(), severidad="error",
+            accion="rechazo_sin_cambios",
+        )
+        exigir_resultado_coherencia(ResultadoCoherencia((problema,)))
+    cambio_contexto = any(getattr(metadata, c) != getattr(anterior, c) for c in campos)
+    docx = (documento.tipo_mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            or anterior.titulo.lower().endswith(".docx"))
+    await asyncio.to_thread(
+        exigir_coherencia_documental, texto, metadata, documento=documento.drive_id,
+        anterior=anterior, exigir_contexto_explicito=docx and cambio_contexto,
+    )
+
+
+class ErrorPreparacionIndexacion(RuntimeError):
+    """Categoría técnica segura compartida por sync y reindexación explícita."""
+
+    def __init__(self, categoria: str):
+        self.categoria = categoria
+        super().__init__(categoria)
+
+
+@dataclass(frozen=True)
+class DocumentoPreparado:
+    documento: DocumentoDrive
+    metadata: MetadataDocumental
+    contenido: bytes
+    chunks: list[Document]
+
+
+async def preparar_documento_indexacion(
+    documento: DocumentoDrive, metadata: MetadataDocumental,
+    *, anterior: DocumentoPersistido | None = None,
+) -> DocumentoPreparado:
+    """Sólo lectura: descarga, extracción, coherencia y chunking compartidos."""
+    categoria = "descarga_fallida"
+    try:
+        contenido = await asyncio.to_thread(
+            descargar_contenido_archivo, documento.drive_id,
+            tipo_mime=documento.tipo_mime, estricto=True,
+        )
+        if not isinstance(contenido, bytes) or not contenido:
+            raise ValueError("La descarga no devolvió contenido.")
+        if documento.drive_modified_time is not None:
+            categoria = "version_drive_modificada"
+            await asyncio.to_thread(validar_version_descargada, documento, contenido)
+        categoria = "extraccion_fallida"
+        secciones = await asyncio.to_thread(
+            extraer_texto_desde_bytes, contenido, documento.titulo, tipo_mime=documento.tipo_mime,
+        )
+        texto = _texto_para_coherencia(secciones)
+        await asyncio.to_thread(
+            exigir_coherencia_documental, texto, metadata, documento=documento.drive_id, anterior=anterior,
+        )
+        chunks = await asyncio.to_thread(_fragmentar_secciones, secciones, documento.titulo)
+        return DocumentoPreparado(documento, metadata, contenido, chunks)
+    except ErrorCoherenciaDocumental:
+        raise
+    except Exception:
+        raise ErrorPreparacionIndexacion(categoria) from None
+
+
+async def indexar_documento_preparado(
+    preparado: DocumentoPreparado, *, gestor: GestorEmbeddings,
+    ejecucion_id: str | None = None, antes_de_persistir=None,
+) -> ResumenIndexacion:
+    """Único recorrido de embeddings y RPC; el guard se ejecuta antes de escribir."""
+    try:
+        embeddings = await gestor.embed_documents([chunk.page_content for chunk in preparado.chunks])
+        validar_resultado_documentos(embeddings, len(preparado.chunks))
+        fragmentos = [
+            FragmentoParaIndexar(contenido=chunk.page_content, vector=vector, orden=orden)
+            for orden, (chunk, vector) in enumerate(
+                zip(preparado.chunks, embeddings.vectores, strict=True), start=1,
+            )
+        ]
+    except (ErrorEmbeddingIncompatible, EmbeddingsNoDisponibles):
+        raise
+    except Exception:
+        raise ErrorPreparacionIndexacion("embeddings_fallidos") from None
+    if antes_de_persistir is not None:
+        await antes_de_persistir()
+    opciones = {"metadata": preparado.metadata}
+    if ejecucion_id is not None:
+        opciones["ejecucion_id"] = ejecucion_id
+    try:
+        return await asyncio.to_thread(sync_document_chunks, preparado.documento, fragmentos, **opciones)
+    except Exception:
+        raise ErrorPreparacionIndexacion("persistencia_fallida") from None
 
 
 async def run_full_sync(
@@ -204,12 +335,16 @@ async def run_full_sync(
                 categoria = "baja_nombre_invalido_fallida"
                 await _inactivar_invalido(anterior, ejecucion_id)
                 raise error
-            if anterior is not None and not forzar and not _version_distinta(documento, anterior):
-                categoria = "actualizacion_metadata_fallida"
-                await asyncio.to_thread(
-                    repositorio.actualizar_metadata_documento_sync,
-                    documento, metadata, ejecucion_id,
-                )
+            if anterior is not None and not _version_distinta(documento, anterior):
+                if (_metadata_distinta(documento, anterior, metadata)
+                        or anterior.estado != "activo" or anterior.vigente is not True):
+                    categoria = "lectura_coherencia_fallida"
+                    await _validar_contexto_persistido(documento, anterior, metadata)
+                    categoria = "actualizacion_metadata_fallida"
+                    await asyncio.to_thread(
+                        repositorio.actualizar_metadata_documento_sync,
+                        documento, metadata, ejecucion_id,
+                    )
                 cantidad = await asyncio.to_thread(repositorio.contar_fragmentos_documento, anterior.id)
                 resultados.append(ResultadoIndexacionDocumento(
                     drive_id=documento.drive_id, titulo=documento.titulo,
@@ -218,49 +353,18 @@ async def run_full_sync(
                                               indexado_en=anterior.indexado_en),
                 ))
                 continue
-            categoria = "descarga_fallida"
-            contenido = await asyncio.to_thread(
-                descargar_contenido_archivo,
-                documento.drive_id,
-                tipo_mime=documento.tipo_mime,
-                estricto=True,
-            )
-            if not isinstance(contenido, bytes) or not contenido:
-                raise ValueError("La descarga no devolvió contenido.")
-            if documento.drive_modified_time is not None:
-                categoria = "version_drive_modificada"
-                await asyncio.to_thread(validar_version_descargada, documento, contenido)
-            categoria = "extraccion_fallida"
-            secciones = await asyncio.to_thread(
-                extraer_texto_desde_bytes,
-                contenido,
-                documento.titulo,
-                tipo_mime=documento.tipo_mime,
-            )
-            chunks = await asyncio.to_thread(_fragmentar_secciones, secciones, documento.titulo)
+            preparado = await preparar_documento_indexacion(documento, metadata, anterior=anterior)
             categoria = "embeddings_fallidos"
             if actual is None:
                 actual = obtener_gestor_embeddings()
-            embeddings = await actual.embed_documents([chunk.page_content for chunk in chunks])
-            validar_resultado_documentos(embeddings, len(chunks))
-            fragmentos = [
-                FragmentoParaIndexar(contenido=chunk.page_content, vector=vector, orden=orden)
-                for orden, (chunk, vector) in enumerate(
-                    zip(chunks, embeddings.vectores, strict=True), start=1
-                )
-            ]
-            categoria = "persistencia_fallida"
-            opciones = {"metadata": metadata}
-            if ejecucion_id is not None:
-                opciones["ejecucion_id"] = ejecucion_id
-            resumen = await asyncio.to_thread(sync_document_chunks, documento, fragmentos, **opciones)
+            resumen = await indexar_documento_preparado(preparado, gestor=actual, ejecucion_id=ejecucion_id)
             resultados.append(
                 ResultadoIndexacionDocumento(
                     drive_id=documento.drive_id, titulo=documento.titulo, resumen=resumen
                 )
             )
         except Exception as error:
-            if isinstance(error, ErrorMetadataDocumental):
+            if isinstance(error, (ErrorMetadataDocumental, ErrorCoherenciaDocumental, ErrorPreparacionIndexacion)):
                 categoria = error.categoria
             elif isinstance(error, ErrorEmbeddingIncompatible):
                 categoria = "embeddings_incompatibles"
@@ -396,12 +500,17 @@ async def sincronizar_drive_completo(
                     contadores["reactivados"] += 1
             elif reactivar or _metadata_distinta(documento, anterior, metadata):
                 try:
+                    await _validar_contexto_persistido(documento, anterior, metadata)
                     cambiado = await asyncio.to_thread(
                         repositorio.actualizar_metadata_documento_sync,
                         documento, metadata, propietario,
                     )
                     if cambiado:
                         contadores["reactivados" if reactivar else "actualizados"] += 1
+                except ErrorCoherenciaDocumental as error:
+                    errores.append(ErrorSincronizacion(
+                        drive_id=documento.drive_id, categoria=error.categoria,
+                    ))
                 except Exception:
                     errores.append(ErrorSincronizacion(
                         drive_id=documento.drive_id, categoria="actualizacion_estado_fallida",

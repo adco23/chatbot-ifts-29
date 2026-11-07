@@ -10,7 +10,8 @@ from app.models.chat import SalidaGenerador
 from app.services.sanitizador import sanitizar_texto
 from app.services.temporalidad import fechas_respaldadas
 from app.services.eventos_cronograma import (
-    ErrorEvento, identificar_evento, validar_eventos_mencionados, validar_respuesta_evento,
+    ErrorEvento, expandir_rangos_explicitos, identificar_evento,
+    validar_eventos_mencionados, validar_respuesta_evento,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,7 @@ def validar_generacion(
     registrar_etapa("generacion_llm_recibida", proveedor=proveedor, caracteres=len(texto),
                     ids_permitidos=permitidos)
     normalizaciones = []
+    respuesta_eventos = None
     limpio = texto.strip()
     if limpio.startswith("\ufeff"):
         limpio = limpio[1:].strip()
@@ -102,6 +104,9 @@ def validar_generacion(
                     claves_adicionales=len(set(datos) - _CLAVES) if isinstance(datos, dict) else 0)
     if isinstance(datos, dict):
         if isinstance(datos.get("respuesta"), str):
+            # Vista local que conserva los límites de las asociaciones en listas.
+            # La respuesta HTTP conserva su normalización habitual.
+            respuesta_eventos = "\n".join(sanitizar_texto(fila) for fila in datos["respuesta"].splitlines())
             datos["respuesta"] = sanitizar_texto(datos["respuesta"])
         referencias = datos.get("fragmento_ids")
         if isinstance(referencias, list):
@@ -165,20 +170,26 @@ def validar_generacion(
         contenidos = [disponibles[i].contenido for i in usados if i in fragmento_ids_primarios]
         registrar_etapa("evidencia_primaria_citada", proveedor=proveedor,
                         ids_citados=_ids_seguros([i for i in usados if i in fragmento_ids_primarios]))
-    if not fechas_respaldadas(salida.respuesta, contenidos):
-        _rechazar("fechas_invalidas", "fecha_no_respaldada", proveedor)
-    registrar_etapa("fechas_validas", proveedor=proveedor)
     evento = identificar_evento(consulta) if consulta is not None else None
     cronograma = any(f.tipo_documental == "cronograma" for f in fragmentos)
+    temporal = expandir_rangos_explicitos if evento is not None or cronograma else lambda t: t
+    if not fechas_respaldadas(temporal(salida.respuesta), [temporal(c) for c in contenidos]):
+        _rechazar("fechas_invalidas", "fecha_no_respaldada", proveedor)
+    registrar_etapa("fechas_validas", proveedor=proveedor)
     if evento is not None or cronograma:
         try:
             if evento is not None:
-                validar_respuesta_evento(salida.respuesta, contenidos, evento)
+                validar_respuesta_evento(respuesta_eventos, contenidos, evento)
             else:
-                validar_eventos_mencionados(salida.respuesta, contenidos)
+                validar_eventos_mencionados(respuesta_eventos, contenidos, consulta=consulta)
         except ErrorEvento as error:
-            _rechazar("eventos_invalidos", str(error), proveedor)
+            _rechazar("eventos_invalidos", str(error), proveedor,
+                      guarda=error.guarda,
+                      tipo=evento.tipo if evento is not None else "plural_o_general",
+                      numero=evento.numero if evento is not None and evento.numero is not None
+                      and 0 <= evento.numero <= 99 else None)
         registrar_etapa("evento_validado", proveedor=proveedor,
                         tipo=evento.tipo if evento is not None else "general",
-                        numero=evento.numero if evento is not None else None)
+                        numero=evento.numero if evento is not None and evento.numero is not None
+                        and 0 <= evento.numero <= 99 else None)
     return salida, [disponibles[i] for i in usados]

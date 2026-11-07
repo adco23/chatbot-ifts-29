@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -147,6 +148,16 @@ def crear_analizador() -> argparse.ArgumentParser:
                 comando.add_argument("--documento-id", type=_entero_positivo, action="append")
             else:
                 comando.add_argument("--consulta", type=_texto_no_vacio, action="append")
+    reindexar = comandos.add_parser("reindexar", help="Reprocesa exclusivamente un documento existente.")
+    reindexar.add_argument("--drive-id", action="append", type=_texto_no_vacio, required=True)
+    reindexar.add_argument("--documento-id-esperado", type=_entero_positivo, required=True)
+    reindexar.add_argument("--titulo-esperado", type=_texto_no_vacio, required=True)
+    reindexar.add_argument("--exigir-pfo", type=_entero_positivo, nargs="+", default=[])
+    modo = reindexar.add_mutually_exclusive_group(required=True)
+    modo.add_argument("--dry-run", dest="modo", action="store_const", const="dry-run")
+    modo.add_argument("--aplicar", dest="modo", action="store_const", const="aplicar")
+    modo.add_argument("--verificar", dest="modo", action="store_const", const="verificar")
+    reindexar.add_argument("--respaldo", type=Path, help="Archivo fuera del repositorio; no se sobrescribe.")
     return analizador
 
 
@@ -199,6 +210,21 @@ def _formatear_fecha_utc(fecha: datetime) -> str:
 
 
 async def _ejecutar(argumentos: argparse.Namespace) -> int:
+    if argumentos.comando == "reindexar":
+        from app.services.reindexacion import reindexar_documento
+        from app.settings import obtener_configuracion
+
+        if len(argumentos.drive_id) != 1:
+            raise ErrorSeleccion("Reindexar requiere exactamente un --drive-id.")
+        if argumentos.modo in {"aplicar", "verificar"} and argumentos.respaldo is None:
+            raise ErrorSeleccion("El modo seleccionado requiere --respaldo fuera del repositorio.")
+        resultado = await reindexar_documento(
+            drive_id=argumentos.drive_id[0], documento_id_esperado=argumentos.documento_id_esperado,
+            titulo_esperado=argumentos.titulo_esperado, pfo_exigidas=argumentos.exigir_pfo,
+            modo=argumentos.modo, respaldo=argumentos.respaldo, configuracion=obtener_configuracion(),
+        )
+        print(json.dumps(resultado, ensure_ascii=False, allow_nan=False))
+        return 0
     from app.db.repositorio import obtener_documento_por_drive_id
     from app.models.rag import FiltrosRecuperacion
     from app.providers.embeddings.dependencias import obtener_gestor_embeddings
@@ -281,8 +307,12 @@ def main(argumentos: Sequence[str] | None = None) -> int:
     if ruta_backend not in sys.path:
         sys.path.insert(0, ruta_backend)
     opciones = crear_analizador().parse_args(argumentos)
+    from app.services.reindexacion import ErrorReindexacion
     try:
         return asyncio.run(_ejecutar(opciones))
+    except ErrorReindexacion as error:
+        print(json.dumps({"estado": "error", "categoria": error.categoria}), file=sys.stderr)
+        return 1
     except ErrorSeleccion as error:
         print(str(error), file=sys.stderr)
         return 2

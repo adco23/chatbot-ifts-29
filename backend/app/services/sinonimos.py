@@ -1,43 +1,81 @@
-import unicodedata
+"""Resolución explícita de materias, sin subcadenas ni IDs institucionales fijos."""
 
-# Mapeo oficial de materias del IFTS 29 y sus posibles sinónimos o formas abreviadas
+import re
+from collections.abc import Sequence
+
+from app.models.chat import MateriaChat
+from app.services.sanitizador import normalizar_comparacion
+
+
 MAPEO_MATERIAS = {
-    "Técnicas de Programación": [
-        "tecnicas", "programacion", "tec prog", "tec. de prog", "programación 1", "tecnicas de programacion"
-    ],
-    "Administración de Base de Datos": [
-        "base de datos", "bd", "datos", "admin de datos", "sql", "bases", "administracion de base de datos"
-    ],
-    "Elementos de Análisis Matemático": [
-        "analisis", "matematica", "analisis matematico", "mate", "calculo", "elementos de analisis matematico"
-    ],
-    "Lógica Computacional": [
-        "logica", "computacional", "logica comp", "logica computacional"
-    ]
+    "Técnicas de Programación": (
+        "tecnicas", "programacion", "tec prog", "tec. de prog", "programación 1",
+    ),
+    "Administración de Base de Datos": (
+        "administracion de bases de datos", "base de datos", "bases de datos",
+        "bd", "abd", "admin de datos", "sql",
+    ),
+    "Elementos de Análisis Matemático": (
+        "analisis", "matematica", "analisis matematico", "calculo",
+    ),
+    "Lógica Computacional": ("logica", "logica comp"),
 }
+_ALIASES = {
+    normalizar_comparacion(nombre): tuple(normalizar_comparacion(alias) for alias in aliases)
+    for nombre, aliases in MAPEO_MATERIAS.items()
+}
+_ANALISIS_MATEMATICO = normalizar_comparacion("Elementos de Análisis Matemático")
+_MATE_ACADEMICO = re.compile(
+    r"\b(?:materia|cronograma|horarios?|programa|contenidos|temas|cursada|parciales?|"
+    r"examen(?:es)?|comision)\s+(?:de\s+)?mate\b"
+)
+
 
 def limpiar_texto(texto: str) -> str:
-    """
-    Convierte el texto a minúsculas y remueve acentos/tildes para una comparación robusta.
-    """
-    if not texto:
-        return ""
-    texto_min = texto.lower().strip()
-    # Remueve tildes y caracteres diacríticos
-    nfkd_form = unicodedata.normalize('NFKD', texto_min)
-    return "".join([c for c in nfkd_form if not unicodedata.combining(c)])
+    """Compatibilidad: usa la misma normalización que el resto del chat."""
+    return normalizar_comparacion(texto) if texto else ""
+
+
+def _contiene_frase(texto: str, frase: str) -> bool:
+    return bool(frase and re.search(r"(?<!\w)" + re.escape(frase) + r"(?!\w)", texto))
+
+
+def _coincide(texto: str, nombre: str, codigo: str = "") -> bool:
+    if _contiene_frase(texto, nombre):
+        return True
+    if any(_contiene_frase(texto, alias) for alias in _ALIASES.get(nombre, ())):
+        return True
+    if nombre == _ANALISIS_MATEMATICO and _MATE_ACADEMICO.search(texto):
+        return True
+    if not codigo:
+        return False
+    # Una letra o un número aislados pueden ser una comisión, fecha o cuatrimestre.
+    if len(codigo) == 1 or not any(caracter.isalpha() for caracter in codigo):
+        return bool(re.search(
+            r"\b(?:materia|codigo(?: de materia)?)\s+" + re.escape(codigo) + r"(?!\w)", texto,
+        ))
+    return _contiene_frase(texto, codigo)
+
+
+def nombres_mencionados(texto: str) -> tuple[str, ...]:
+    """Nombres canónicos mencionados, sin asignar IDs ni resolver ambigüedades."""
+    normalizado = limpiar_texto(texto)
+    return tuple(nombre for nombre in MAPEO_MATERIAS
+                 if _coincide(normalizado, normalizar_comparacion(nombre)))
+
 
 def normalizar_y_buscar_materia(texto_usuario: str) -> str | None:
-    """
-    Recibe el mensaje del usuario, lo limpia y busca a qué materia oficial
-    corresponde según el diccionario de sinónimos.
-    """
-    texto_limpio = limpiar_texto(texto_usuario)
-    
-    for materia_oficial, sinonimos in MAPEO_MATERIAS.items():
-        # Verificamos si el texto coincide con el nombre oficial limpio o con alguno de sus sinónimos
-        nombre_oficial_limpio = limpiar_texto(materia_oficial)
-        if nombre_oficial_limpio in texto_limpio or any(limpiar_texto(sin) in texto_limpio for sin in sinonimos):
-            return materia_oficial
-            
-    return None
+    """Wrapper compatible: nombre canónico sólo si hay una coincidencia inequívoca."""
+    nombres = nombres_mencionados(texto_usuario)
+    return nombres[0] if len(nombres) == 1 else None
+
+
+def resolver_materia(texto: str, materias: Sequence[MateriaChat]) -> MateriaChat | None:
+    """Selecciona un único ID del catálogo real; no inventa candidatos ni aliases."""
+    normalizado = limpiar_texto(texto)
+    candidatos = {
+        materia.id: materia for materia in materias
+        if _coincide(normalizado, normalizar_comparacion(materia.nombre),
+                     normalizar_comparacion(materia.codigo))
+    }
+    return next(iter(candidatos.values())) if len(candidatos) == 1 else None

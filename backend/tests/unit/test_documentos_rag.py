@@ -252,7 +252,7 @@ def test_metadatos_por_id_piden_solo_los_campos_necesarios():
     assert resultado == servicio.metadatos
     assert servicio.llamadas == [("get", {
         "fileId": "documento-ficticio",
-        "fields": "id,name,mimeType,webViewLink,modifiedTime,md5Checksum"
+        "fields": "id,name,mimeType,webViewLink,modifiedTime,md5Checksum,trashed"
     })]
     assert servicio.cierres == 0
 

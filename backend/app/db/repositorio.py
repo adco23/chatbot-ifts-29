@@ -11,6 +11,7 @@ from app.models.rag import (
     DocumentoPersistido,
     FiltrosRecuperacion,
     FragmentoParaIndexar,
+    FragmentoPersistido,
     FragmentoRecuperado,
     MetadataDocumental,
     ResumenIndexacion,
@@ -357,6 +358,42 @@ def contar_fragmentos_documento(documento_id: int, *, cliente: Client | None = N
         raise ErrorRepositorio("No se pudo contar los fragmentos del documento.") from None
 
 
+_TAMANIO_PAGINA_FRAGMENTOS = 500
+
+
+def obtener_fragmentos_documento(
+    documento_id: int, *, cliente: Client | None = None,
+) -> list[FragmentoPersistido]:
+    """Lee exclusivamente un documento, con sus vectores, sin truncar el respaldo.
+
+    El orden solicitado y validado es (orden, id). La lectura no modifica tablas
+    ni llama RPC; el servicio coordina el lease y la estabilidad de la versión.
+    """
+    _validar_id(documento_id)
+    base = _cliente_rag(cliente)
+    fragmentos: list[FragmentoPersistido] = []
+    ids: set[int] = set()
+    while True:
+        desde = len(fragmentos)
+        filas = _ejecutar_rag(lambda: base.schema("public").table("fragmento").select(
+            "id,documento_id,contenido,vector,orden",
+        ).eq("documento_id", documento_id).order("orden").order("id").range(
+            desde, desde + _TAMANIO_PAGINA_FRAGMENTOS - 1,
+        ).execute())
+        if not filas:
+            return fragmentos
+        try:
+            pagina = [FragmentoPersistido.model_validate(fila) for fila in filas]
+            for esperado, fragmento in enumerate(pagina, start=desde + 1):
+                if (fragmento.documento_id != documento_id or fragmento.id in ids
+                        or fragmento.orden != esperado):
+                    raise ValueError
+                ids.add(fragmento.id)
+        except (ValueError, TypeError, OverflowError, RecursionError):
+            raise ErrorRepositorio("Los fragmentos persistidos no respetan el contrato RAG.") from None
+        fragmentos.extend(pagina)
+
+
 def obtener_firmas_contenido_documentos(
     documento_ids: Sequence[int], *, cliente: Client | None = None,
 ) -> dict[int, str]:
@@ -364,6 +401,19 @@ def obtener_firmas_contenido_documentos(
 
     Sólo se usa para resolver programas de varias comisiones. No equipara documentos
     sin texto ni hace inferencias semánticas. Los errores de conexión son explícitos.
+    """
+    fragmentos = obtener_contenidos_documentos(documento_ids, cliente=cliente)
+    return {documento: hashlib.sha256(texto.encode("utf-8")).hexdigest()
+            for documento, texto in fragmentos.items()}
+
+
+def obtener_contenidos_documentos(
+    documento_ids: Sequence[int], *, cliente: Client | None = None,
+    preservar_estructura: bool = False,
+) -> dict[int, str]:
+    """Lee texto sin scores; opcionalmente conserva líneas para validar encabezados.
+
+    Por defecto mantiene la normalización usada por las firmas de contenido.
     """
     ids = list(dict.fromkeys(documento_ids))
     for documento_id in ids:
@@ -388,12 +438,13 @@ def obtener_firmas_contenido_documentos(
                 raise ErrorRepositorio("Fragmentos inválidos al comparar programas.")
             fragmentos[documento].append((orden, identidad, contenido))
             ultimo_id = identidad
-    firmas = {}
+    contenidos = {}
     for documento, lote in fragmentos.items():
-        texto = " ".join(" ".join(f[2].split()) for f in sorted(lote))
+        texto = ("\n".join(f[2] for f in sorted(lote)) if preservar_estructura else
+                 " ".join(" ".join(f[2].split()) for f in sorted(lote)))
         if texto.strip():
-            firmas[documento] = hashlib.sha256(texto.encode("utf-8")).hexdigest()
-    return firmas
+            contenidos[documento] = texto
+    return contenidos
 
 
 def buscar_fragmentos_similares(

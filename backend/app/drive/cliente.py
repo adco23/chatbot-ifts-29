@@ -177,7 +177,7 @@ def obtener_metadatos_archivo(drive_id: str, *, servicio=None) -> dict:
             raise ErrorDrive("El identificador del documento no es válido.")
         with _usar_servicio(servicio) as cliente:
             archivo = cliente.files().get(
-                fileId=drive_id, fields=_CAMPOS_ARCHIVO
+                fileId=drive_id, fields=f"{_CAMPOS_ARCHIVO},trashed"
             ).execute()
             if not isinstance(archivo, dict) or not all(
                 isinstance(archivo.get(campo), str) and archivo[campo].strip()

@@ -1,6 +1,7 @@
 """Recuperación T31/T32: no genera respuestas ni llama a un LLM."""
 
 import asyncio
+import logging
 from collections.abc import Sequence
 
 from app.db import repositorio
@@ -14,6 +15,8 @@ from app.services.validacion_embeddings_rag import (
     validar_resultado_consulta,
 )
 from app.settings import Configuracion, obtener_configuracion
+
+logger = logging.getLogger(__name__)
 
 
 def _ordenar(fragmentos, limite):
@@ -72,7 +75,11 @@ async def _recuperar_academico(vector, filtros, limite, ids, config, *, evento=N
         if modalidad != "complementaria":
             filas = [f for f in filas if _es_primario(f, filtros, modalidad)]
             if evento is not None:
+                cantidad = len(filas)
                 filas = [f for f in filas if respalda_evento(f.contenido, evento)]
+                logger.debug("seleccion_evento tipo=%s numero=%s candidatos=%d compatibles=%d ids=%s",
+                             evento.tipo, evento.numero if evento.numero is None or 0 <= evento.numero <= 99 else None,
+                             cantidad, len(filas), [f.fragmento_id for f in filas])
         else:
             filas = [f for f in filas if _es_complementario(f, filtros)]
             if evento is not None:

@@ -1,11 +1,13 @@
 """Indexación y CLI con Drive, embeddings y persistencia completamente simulados."""
 
 import asyncio
+from io import BytesIO
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from docx import Document as DocumentoDocx
 
 from app.models.rag import (
     DocumentoDrive,
@@ -17,6 +19,7 @@ from app.models.rag import (
 )
 from app.providers.embeddings.base import ResultadoEmbeddings
 from app.services import sincronizador
+from app.drive.extractores import extraer_texto_desde_bytes
 from app.services.validacion_embeddings_rag import ErrorEmbeddingIncompatible
 from app.settings import DIMENSION_EMBEDDINGS_RAG, MODELO_EMBEDDINGS_RAG, Configuracion
 from scripts import probar_rag
@@ -103,6 +106,44 @@ def test_fragmentacion_en_blanco_no_genera_chunks(texto):
     assert sincronizador.split_text_into_chunks(texto, "Documento", "General") == []
 
 
+def test_docx_conserva_encabezados_pfo_al_extraer_y_fragmentar():
+    documento = DocumentoDocx()
+    for numero, dia in ((1, 7), (2, 21)):
+        documento.add_heading(f"PFO {numero}", level=1)
+        documento.add_paragraph("Materia: Administración de Base de Datos. Comisión: A. Período: 2026C2.")
+        documento.add_paragraph(
+            f"El período de apertura comienza el lunes {dia} de septiembre de 2026 "
+            f"y finaliza el domingo {dia + 6} de septiembre de 2026.")
+    archivo = BytesIO()
+    documento.save(archivo)
+    secciones = extraer_texto_desde_bytes(archivo.getvalue(), "Cronograma.docx")
+    chunks = sincronizador._fragmentar_secciones(secciones, "Cronograma")
+    assert len(chunks) == 2
+    assert chunks[0].page_content.startswith("PFO 1\n")
+    assert chunks[1].page_content.startswith("PFO 2\n")
+    assert all(len(c.page_content) <= 1000 for c in chunks)
+    from app.services.eventos_cronograma import EventoCronograma, validar_respuesta_evento
+    validar_respuesta_evento("PFO 2: del 21 al 27 de septiembre de 2026.",
+                             [chunks[1].page_content], EventoCronograma("pfo", 2))
+
+
+@pytest.mark.parametrize("nombre,contenido", [
+    ("General", "Texto general."), ("PFO 2", "PFO 2\nFecha: 21/09/2026."),
+    ("PFO 2", "pfo 2\nFecha: 21/09/2026."),
+])
+def test_fragmentacion_no_duplica_encabezado_ni_agrega_general(nombre, contenido):
+    chunks = sincronizador._fragmentar_secciones([{"section": nombre, "content": contenido}], "Documento")
+    assert [c.page_content for c in chunks] == [contenido]
+
+
+def test_fragmentacion_con_encabezado_conserva_limite_y_texto():
+    cuerpo = " ".join(f"palabra{i}" for i in range(400))
+    chunks = sincronizador._fragmentar_secciones([{"section": "PFO 2", "content": cuerpo}], "Documento")
+    assert chunks[0].page_content.startswith("PFO 2")
+    assert all(0 < len(c.page_content) <= 1000 for c in chunks)
+    assert "palabra399" in chunks[-1].page_content
+
+
 @pytest.mark.parametrize("entrada", [{"archivo": "hash"}, "archivo", b"archivo", [dict()]])
 def test_entrada_invalida_se_rechaza_antes_de_configuracion_o_io(
     entrada, colaboradores, monkeypatch
@@ -134,13 +175,15 @@ def test_indexa_secciones_con_embed_documents_antes_de_persistir(documento, conf
         b"documento-simulado", "GENERAL__Preguntas.pdf", tipo_mime="application/pdf"
     )
     colaboradores.gestor.embed_documents.assert_awaited_once_with(
-        [seccion["content"] for seccion in SECCIONES]
+        [f"{seccion['section']}\n{seccion['content']}" for seccion in SECCIONES]
     )
     colaboradores.gestor.embed_query.assert_not_awaited()
     guardado, fragmentos = colaboradores.persistir.call_args.args
     assert guardado == documento
     assert [fragmento.orden for fragmento in fragmentos] == [1, 2]
-    assert [fragmento.contenido for fragmento in fragmentos] == [s["content"] for s in SECCIONES]
+    assert [fragmento.contenido for fragmento in fragmentos] == [
+        f"{s['section']}\n{s['content']}" for s in SECCIONES
+    ]
     assert all(fragmento.vector == vector() for fragmento in fragmentos)
 
 
@@ -346,6 +389,9 @@ def test_explicita_solo_metadata_no_descarga_ni_vectoriza(documento, config, col
                                 materia_id=91, indexado_en=FECHA, drive_modified_time=FECHA,
                                 drive_md5_checksum="a" * 32)
     colaboradores.consultar.return_value = previo
+    monkeypatch.setattr(sincronizador.repositorio, "obtener_contenidos_documentos", MagicMock(
+        return_value={7: "Información institucional general sin declaraciones académicas."},
+    ))
     actualizar = MagicMock(return_value=True)
     monkeypatch.setattr(sincronizador.repositorio, "actualizar_metadata_documento_sync", actualizar)
     monkeypatch.setattr(sincronizador.repositorio, "contar_fragmentos_documento", MagicMock(return_value=3))

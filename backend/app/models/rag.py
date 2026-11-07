@@ -1,5 +1,6 @@
 """Contratos de indexación y recuperación; no crean clientes ni leen configuración."""
 
+import json
 import math
 from collections.abc import Sequence
 from datetime import datetime
@@ -110,6 +111,27 @@ class FragmentoParaIndexar(ModeloRag):
         norma = math.hypot(*valor)
         if not math.isfinite(norma) or norma == 0:
             raise ValueError("El vector debe tener norma finita y positiva.")
+        return valor
+
+
+class FragmentoPersistido(FragmentoParaIndexar):
+    """Lectura interna completa para respaldo y verificación; no es un contrato HTTP."""
+
+    id: int = Field(gt=0, strict=True)
+    documento_id: int = Field(gt=0, strict=True)
+
+    @field_validator("vector", mode="before")
+    @classmethod
+    def _vector_postgrest(cls, valor: object) -> object:
+        try:
+            if isinstance(valor, str):
+                valor = json.loads(valor)
+            if not isinstance(valor, list):
+                raise ValueError
+            # Validar antes de Pydantic: True no puede convertirse en 1.0.
+            validar_vector_rag(valor)
+        except (ValueError, TypeError, OverflowError, RecursionError):
+            raise ValueError("El vector persistido no respeta el contrato RAG.") from None
         return valor
 
 
