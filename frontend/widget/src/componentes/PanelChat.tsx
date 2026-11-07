@@ -25,20 +25,9 @@ interface Props {
 const ID_TITULO = 'asistente-titulo';
 
 export function PanelChat({ id, abierto, alCerrar, conversacion, temas, className }: Props) {
-  const {
-    mensajes,
-    enviando,
-    enviar,
-    reintentar,
-    pedirEncuesta,
-    completarEncuesta,
-    huboConsultas,
-    huboRespuestas,
-    encuestaPedida,
-  } = conversacion;
+  const { mensajes, enviando, enviar, reintentar, completarEncuesta, huboConsultas } = conversacion;
   const [borrador, setBorrador] = useState('');
   const [verPrivacidad, setVerPrivacidad] = useState(() => leer(CLAVE_PRIVACIDAD) !== 'si');
-  const enfocarEncuesta = useRef(false);
   const campo = useRef<HTMLInputElement>(null);
   const lista = useRef<HTMLOListElement>(null);
   const desplazable = useRef<HTMLDivElement>(null);
@@ -48,22 +37,10 @@ export function PanelChat({ id, abierto, alCerrar, conversacion, temas, classNam
     [reintentar, enviar, completarEncuesta],
   );
 
-  // El botón "Finalizar" desaparece al pedir la encuesta: el foco pasa a la encuesta.
-  useEffect(() => {
-    if (!enfocarEncuesta.current) return;
-    enfocarEncuesta.current = false;
-    lista.current?.querySelector<HTMLInputElement>('input[type="radio"]')?.focus();
-  }, [mensajes]);
-
   const aceptarPrivacidad = () => {
     setVerPrivacidad(false);
     guardar(CLAVE_PRIVACIDAD, 'si');
     campo.current?.focus();
-  };
-
-  const finalizar = () => {
-    enfocarEncuesta.current = true;
-    pedirEncuesta();
   };
 
   // Foco al campo solo cuando el panel pasa de cerrado a abierto. Si arranca abierto (modo
@@ -100,19 +77,6 @@ export function PanelChat({ id, abierto, alCerrar, conversacion, temas, classNam
         <h2 id={ID_TITULO} className={estilos.titulo}>
           Asistente Virtual AppMinds
         </h2>
-        {huboRespuestas && !encuestaPedida && (
-          // PARA REVISIÓN: disparador de la encuesta (RF11), sin diseño.
-          <button
-            type="button"
-            className={estilos.finalizar}
-            onClick={finalizar}
-            disabled={enviando}
-            data-para-revision
-          >
-            Finalizar
-            <span className="solo-lectores"> la conversación y calificar el asistente</span>
-          </button>
-        )}
         {alCerrar && (
           <button type="button" className={estilos.cerrar} onClick={alCerrar}>
             <IconoCerrar />

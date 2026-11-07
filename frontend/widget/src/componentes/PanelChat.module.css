@@ -30,29 +30,6 @@
   font-weight: 700;
 }
 
-.finalizar {
-  padding: 4px 12px;
-  border: 1px solid rgb(255 255 255 / 70%);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--color-blanco);
-  font-size: var(--texto-sm);
-  cursor: pointer;
-}
-
-.finalizar:hover:not(:disabled) {
-  background: rgb(255 255 255 / 12%);
-}
-
-.finalizar:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.finalizar:focus-visible {
-  outline-color: var(--color-turquesa);
-}
-
 .cerrar {
   display: grid;
   place-items: center;
