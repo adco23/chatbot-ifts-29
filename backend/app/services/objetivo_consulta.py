@@ -17,6 +17,51 @@ _ACCION = re.compile(
     r"ingresa\w*|accede\w*|presenta\w*|entrega\w*|envia\w*|emite\w*|emitido|"
     r"canales administrativos|sistema de gestion|seccion|plataforma)\b"
 )
+_UNIDADES = r"(?:materias|asignaturas|unidades curriculares)"
+_ALCANCE_PLAN = r"(?:carrera|cursada|tecnicatura|plan(?: de estudios)?)"
+_TOTAL_PLAN = re.compile(
+    rf"\b{_ALCANCE_PLAN}\s+(?:tiene|comprende|incluye|consta de|se compone de|"
+    rf"esta compuest[oa] por)\s+(?:(?:un )?total de\s+)?([1-9][0-9]{{0,2}})\s+{_UNIDADES}\b"
+    rf"|\btotal(?: de {_UNIDADES})?\s+(?:del|de la)\s+{_ALCANCE_PLAN}"
+    rf"\s*:\s*([1-9][0-9]{{0,2}})\b"
+)
+_CANTIDAD_UNIDADES = re.compile(rf"\b([1-9][0-9]{{0,2}})\s+{_UNIDADES}\b")
+_ALCANCE_PARCIAL = re.compile(
+    r"\b(?:primer[oa]?|segund[oa]|tercer[oa]?|cuart[oa]|quint[oa]|sext[oa]|[1-6][°º]?)"
+    r"\s+(?:ano|cuatrimestre)\b"
+)
+
+
+def es_consulta_total_plan(texto: str) -> bool:
+    consulta = normalizar_comparacion(texto)
+    return bool(
+        re.search(rf"\b(?:cuantas|cantidad(?: total)? de|total de)\s+{_UNIDADES}\b", consulta)
+        and re.search(rf"\b{_ALCANCE_PLAN}\b", consulta)
+        and not re.search(r"\b(?:moodle|matriculad\w*|inscript\w*|asignad\w*)\b", consulta)
+        and not _ALCANCE_PARCIAL.search(consulta)
+    )
+
+
+def _totales_plan_explicitos(texto: str) -> set[int]:
+    # Sólo declaraciones de total del plan/carrera, nunca un recuento de chunks.
+    oraciones = re.split(r"(?<=[.!?;])\s+|\n+", normalizar_comparacion(texto))
+    return {int(match[1] or match[2]) for oracion in oraciones
+            if not _ALCANCE_PARCIAL.search(oracion)
+            for match in _TOTAL_PLAN.finditer(oracion)}
+
+
+def total_plan_respaldado(consulta: str, contenidos, *, respuesta: str | None = None) -> bool:
+    """Guarda compartida por generación y HIT: exige un total explícito sin conflictos."""
+    if not es_consulta_total_plan(consulta):
+        return True
+    totales = {n for contenido in contenidos for n in _totales_plan_explicitos(contenido)}
+    if len(totales) != 1:
+        return False
+    if respuesta is None:
+        return True
+    mencionados = {int(m[1]) for m in _CANTIDAD_UNIDADES.finditer(normalizar_comparacion(respuesta))}
+    mencionados.update(_totales_plan_explicitos(respuesta))
+    return mencionados == totales
 
 
 def identificar_objetivo(texto: str) -> str | None:
@@ -33,6 +78,8 @@ def identificar_objetivo(texto: str) -> str | None:
         return "tramite_administrativo"
     if re.search(r"\b(?:promocion\w*|promociono|promocionar|promuevo)\b", consulta):
         return "promocion"
+    if es_consulta_total_plan(texto):
+        return "plan_estudios"
     if re.search(r"\b(?:materias|asignaturas)\b", consulta):
         if re.search(r"\b(?:moodle|matriculad\w*|inscript\w*|asignad\w*)\b", consulta):
             return "matriculacion"
@@ -63,9 +110,10 @@ def _pertinente(bloque: str, objetivo: str, titulo: str) -> bool:
     respuesta = normalizar_comparacion(_respuesta_bloque(bloque))
     if objetivo == "plan_estudios":
         nombre = re.sub(r"[-_]", " ", normalizar_comparacion(titulo))
-        return ("plan" in nombre and "estudios" in nombre) and bool(re.search(
+        curricular = bool(_totales_plan_explicitos(texto) or re.search(
             r"unidad(?:es)? curricular|denominacion|\b[1-3]\.[12]\.\d+|"
             r"(?:primer|segundo|[1-6]°?)[ ]+(?:ano|cuatrimestre)", texto))
+        return "plan" in nombre and "estudios" in nombre and curricular
     if objetivo == "matriculacion":
         return "moodle" in texto and bool(re.search(r"materias|matricul|inscrip|asignad", texto))
     if objetivo == "definicion_regular":
@@ -150,6 +198,9 @@ def faq_compatible(consulta: str, canonica: str, respuesta: str) -> bool:
 
 def consulta_dirigida(texto: str, objetivo: str) -> str:
     if objetivo == "plan_estudios":
+        if es_consulta_total_plan(texto):
+            return ("Plan de estudios completo: cantidad total de materias "
+                    "y unidades curriculares de la carrera.")
         alcance = "primer año" if re.search(r"primer\s+ano", normalizar_comparacion(texto)) else "primer cuatrimestre"
         return f"Plan de estudios: materias y unidades curriculares del {alcance}."
     return {

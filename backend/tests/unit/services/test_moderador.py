@@ -1,4 +1,4 @@
-"""T47 local: patrones controlados, contexto explicativo y privacidad, sin red."""
+"""T47 local: política estricta configurable, límites de palabra y privacidad, sin red."""
 
 import json
 import logging
@@ -49,6 +49,72 @@ def test_catalogo_real_sigue_siendo_valido_y_no_activa_respaldo():
     datos = json.loads(moderador.RUTA_CATALOGO.read_text(encoding="utf-8"))
     validados = moderador._validar_catalogo(datos)
     assert cargar_catalogo().insultos == validados["insultos"]
+
+
+@pytest.mark.parametrize("texto,bloqueada", [
+    ("que chat de mierda", True), ("¡QUÉ CHAT DE MIERDA!", True),
+    ("puto", True), ("sos un puto", True),
+    ('¿Qué significa la palabra "mierda" en este texto?', True),
+    ('¿Qué significa la palabra "puto" en este texto?', True),
+    ('¿Qué significa la expresión "que chat de mierda" en este texto?', True),
+    ('¿Qué significa la expresión "sos un puto" en este texto?', True),
+    ('La palabra "puto" aparece en un texto que analizamos.', True),
+    ("Necesito analizar el término mierda.", True),
+    ("putometro", False), ("No sos un puto", True),
+    ("Inscripción\nAclaración: que chat de mierda", True),
+])
+def test_politica_estricta_tambien_bloquea_menciones_explicativas(texto, bloqueada):
+    assert entrada_bloqueada(texto) is bloqueada
+
+
+@pytest.mark.parametrize("palabra", [
+    "pelotudo", "pelotuda", "pelotudos", "pelotudas", "boludo", "boluda", "boludos", "boludas",
+    "forro", "forra", "forros", "forras", "tarado", "tarada", "tarados", "taradas",
+    "idiota", "idiotas", "imbécil", "imbecil", "imbéciles", "imbeciles",
+    "estúpido", "estupido", "estúpida", "estupida", "estúpidos", "estupidos",
+    "sorete", "soreta", "soretes", "gil", "giles", "salame", "salames", "pavote", "pavota",
+    "nabo", "naba", "inútil", "inutil", "inútiles", "inutiles",
+    "pajero", "pajera", "pajeros", "pajeras", "conchudo", "conchuda", "conchudos", "conchudas",
+    "cagón", "cagon", "cagona", "cagones", "choto", "chota", "chotos", "chotas",
+    "puto", "puta", "putos", "putas", "cornudo", "cornuda", "cornudos", "cornudas",
+    "ortiva", "ortivas", "mierda", "mierdas", "carajo", "carajos", "pelotudez", "pelotudeces",
+    "boludez", "boludeces", "cagada", "cagadas", "culo", "culos", "orto", "pija", "pijazo",
+    "verga", "poronga", "concha", "pelotudooo", "boludooo", "putooo", "mierdaaaa",
+])
+def test_familias_ofensivas_completas_y_prolongaciones(palabra):
+    assert entrada_bloqueada(f'En el texto aparece "{palabra.upper()}!!!"')
+
+
+@pytest.mark.parametrize("texto", [
+    "Parciales de Base de Datos", "Quiero el cronograma", "Tengo una consulta de Moodle",
+    "Plan de Estudios", "Comisión A", "Comisión B", "Comisión C", "Comisión D",
+    "cálculo", "computadora", "artículos", "vincular", "pijamada", "salamería",
+])
+def test_consultas_academicas_y_palabras_con_subcadenas_no_se_bloquean(texto):
+    assert not entrada_bloqueada(texto)
+
+
+def test_palabra_ficticia_del_json_bloquea_sola_citada_y_repetida(tmp_path, vocabulario):
+    vocabulario["insultos"].append("zorrunco")
+    ruta = escribir_catalogo(tmp_path / "moderacion.json", vocabulario)
+    for texto in ("zorrunco", "ZORRUNCO!!!", "zorruncooo", '¿Qué significa "zorrunco"?'):
+        assert entrada_bloqueada(texto, ruta_config=ruta)
+    assert not entrada_bloqueada("antizorruncometro", ruta_config=ruta)
+
+
+def test_frase_literal_nueva_del_json_no_requiere_patron_especifico(tmp_path, vocabulario):
+    vocabulario["frases_bloqueadas"] = ["frase ficticia de prueba"]
+    ruta = escribir_catalogo(tmp_path / "moderacion.json", vocabulario)
+    assert entrada_bloqueada('El texto dice "FRASE  FICTICIA DE PRUEBA"', ruta_config=ruta)
+    assert not entrada_bloqueada("La frase ficticia está incompleta", ruta_config=ruta)
+
+
+@pytest.mark.parametrize("valor", [[], [".*"], "frase", [None]])
+def test_categoria_opcional_invalida_tambien_activa_respaldo(tmp_path, vocabulario, valor):
+    vocabulario["frases_bloqueadas"] = valor
+    ruta = escribir_catalogo(tmp_path / "moderacion.json", vocabulario)
+    assert entrada_bloqueada("idiota", ruta_config=ruta)
+    assert not entrada_bloqueada("sos un forro", ruta_config=ruta)
 
 
 @pytest.mark.parametrize("texto", [
@@ -110,34 +176,42 @@ def test_discriminacion_exige_construccion_explicita(texto):
     "negro", "rata", "El fondo del documento es negro.", "La rata es un roedor.",
     "La materia estudia migraciones, religión y discapacidad.",
     "¿Cuál es el concepto de amenaza en un análisis de riesgos?",
-    "¿Qué significa idiota?", "¿Qué significa la palabra imbécil?",
-    "La palabra idiota aparece en un texto que estamos analizando.",
     "idiotamente", "imbecilidad", "pelotudometro", "sos un pelotudometro",
     "La expresión te voy a matarlos no coincide con una amenaza directa.",
-    "no te voy a matar", "Nunca te voy a golpear", "Jamás voy a matarte",
-    "No sos un pelotudo", "No sos una estúpida", "Los inmigrantes no son inferiores",
-    "No hay que exterminar a los musulmanes", "Nunca andate a la mierda",
+    "Los inmigrantes no son inferiores",
     "Consulta institucional sin agresiones", "",
-    "boludo", "boluda", "sorete", "soreta",
+    "sos un boludometro", "sos un soretero", "sos un gilet", "sos un salamero",
+    "cálculo", "computo", "computación", "particular", "artículos", "porcentaje",
+    "Los valores son inferiores al límite.",
+])
+def test_permite_academico_sin_vocabulario_ofensivo_ni_coincidencias_parciales(texto):
+    assert entrada_bloqueada(texto) is False
+
+
+@pytest.mark.parametrize("texto", [
+    "¿Qué significa idiota?", "¿Qué significa la palabra imbécil?",
+    "La palabra idiota aparece en un texto que estamos analizando.",
+    "no te voy a matar", "Nunca te voy a golpear", "Jamás voy a matarte",
+    "No sos un pelotudo", "No sos una estúpida", "No hay que exterminar a los musulmanes",
+    "Nunca andate a la mierda", "boludo", "boluda", "sorete", "soreta",
     "La palabra boludo aparece en un texto.", "En el diálogo se usa la palabra boluda.",
     "Estoy analizando el uso del término sorete.", "¿Qué significa soreta?",
-    "sos un boludometro", "sos un soretero", "No sos un boludo", "No sos una soreta",
-    '¿Qué significa "tarado"?', '¿Qué quiere decir "sos un boludo"?',
-    'La palabra "idiota" aparece en este texto.', '¿Qué significa "mierda"?',
-    '¿Qué quiere decir "andate al carajo"?', "carajo", "mierda",
-    "sos un gilet", "sos un salamero", "No sos un tarado", "No te voy a romper la cara",
+    "No sos un boludo", "No sos una soreta", '¿Qué significa "tarado"?',
+    '¿Qué quiere decir "sos un boludo"?', 'La palabra "idiota" aparece en este texto.',
+    '¿Qué significa "mierda"?', '¿Qué quiere decir "andate al carajo"?', "carajo", "mierda",
+    "No sos un tarado", "No te voy a romper la cara",
 ])
-def test_permite_academico_ambiguo_negado_y_sin_coincidencias_parciales(texto):
-    assert entrada_bloqueada(texto) is False
+def test_negaciones_y_menciones_no_eximen_vocabulario_bloqueado(texto):
+    assert entrada_bloqueada(texto) is True
 
 
 @pytest.mark.parametrize("apertura,cierre", [('"', '"'), ("“", "”"), ("«", "»"), ("'", "'")])
 @pytest.mark.parametrize("frase", ["sos un pelotudo", "te voy a matar",
                                   "los inmigrantes son inferiores", "sos un boludo",
                                   "sos una boluda", "sos un sorete", "sos una soreta"])
-def test_citas_explicativas_completas_permitidas(apertura, cierre, frase):
+def test_citas_explicativas_completas_bloqueadas(apertura, cierre, frase):
     consulta = f"¿Qué significa la expresión {apertura}{frase}{cierre}?"
-    assert entrada_bloqueada(consulta) is False
+    assert entrada_bloqueada(consulta) is True
 
 
 @pytest.mark.parametrize("texto", [
@@ -146,8 +220,8 @@ def test_citas_explicativas_completas_permitidas(apertura, cierre, frase):
     "¿Qué quiere decir 'sos un pelotudo' en este contexto?",
     '¿Qué significa "sos un imbécil" en un contexto académico?',
 ])
-def test_variantes_explicativas_acotadas(texto):
-    assert entrada_bloqueada(texto) is False
+def test_variantes_explicativas_no_eximen_bloqueo(texto):
+    assert entrada_bloqueada(texto) is True
 
 
 @pytest.mark.parametrize("texto", [
@@ -219,8 +293,8 @@ def test_nuevo_insulto_sin_modificar_python(tmp_path, vocabulario, frase):
     vocabulario["insultos"].append("pavota")
     ruta = escribir_catalogo(tmp_path / "moderacion.json", vocabulario)
     assert entrada_bloqueada(frase, ruta_config=ruta) is True
-    assert entrada_bloqueada("pavote", ruta_config=ruta) is False
-    assert entrada_bloqueada('¿Qué quiere decir "sos un pavote"?', ruta_config=ruta) is False
+    assert entrada_bloqueada("pavote", ruta_config=ruta) is True
+    assert entrada_bloqueada('¿Qué quiere decir "sos un pavote"?', ruta_config=ruta) is True
 
 
 def test_variantes_regulares_sin_inventar_femeninos_irregulares(tmp_path, vocabulario):
@@ -237,8 +311,8 @@ def test_nueva_amenaza_y_equivalencias_controladas(tmp_path, vocabulario, frase)
     vocabulario["amenazas_frases"].append("te voy a secuestrar")
     ruta = escribir_catalogo(tmp_path / "moderacion.json", vocabulario)
     assert entrada_bloqueada(frase, ruta_config=ruta) is True
-    assert entrada_bloqueada(f"no {frase}", ruta_config=ruta) is False
-    assert entrada_bloqueada(f'¿Qué significa "{frase}"?', ruta_config=ruta) is False
+    assert entrada_bloqueada(f"no {frase}", ruta_config=ruta) is True
+    assert entrada_bloqueada(f'¿Qué significa "{frase}"?', ruta_config=ruta) is True
     assert entrada_bloqueada(f"no {frase}, pero sos un tarado", ruta_config=ruta) is True
 
 
@@ -246,22 +320,22 @@ def test_amenaza_literal_no_requiere_formato_te_voy_a(tmp_path, vocabulario):
     vocabulario["amenazas_frases"].append("te rompo los huesos")
     ruta = escribir_catalogo(tmp_path / "moderacion.json", vocabulario)
     assert entrada_bloqueada("te rompo los huesos", ruta_config=ruta) is True
-    assert entrada_bloqueada("no te rompo los huesos", ruta_config=ruta) is False
+    assert entrada_bloqueada("no te rompo los huesos", ruta_config=ruta) is True
 
 
-@pytest.mark.parametrize("clave,valor,consulta", [
-    ("discriminacion_frases", "son indignos", "los inmigrantes son indignos"),
-    ("discriminacion_frases", "sin valor", "sos un extranjero sin valor"),
-    ("incitaciones_discriminatorias", "hay que perseguir a", "hay que perseguir a los gays"),
-    ("terminos_grupo", "marciano", "los marcianos son inferiores"),
-    ("groserias_contextuales", "porqueria", "andate a la porqueria"),
+@pytest.mark.parametrize("clave,valor,consulta,aislado", [
+    ("discriminacion_frases", "son indignos", "los inmigrantes son indignos", False),
+    ("discriminacion_frases", "sin valor", "sos un extranjero sin valor", False),
+    ("incitaciones_discriminatorias", "hay que perseguir a", "hay que perseguir a los gays", False),
+    ("terminos_grupo", "marciano", "los marcianos son inferiores", False),
+    ("groserias_contextuales", "porqueria", "andate a la porqueria", True),
 ])
-def test_vocabulario_contextual_ampliable(tmp_path, vocabulario, clave, valor, consulta):
+def test_vocabulario_contextual_ampliable(tmp_path, vocabulario, clave, valor, consulta, aislado):
     vocabulario[clave].append(valor)
     ruta = escribir_catalogo(tmp_path / "moderacion.json", vocabulario)
     assert entrada_bloqueada(consulta, ruta_config=ruta) is True
-    assert entrada_bloqueada(valor, ruta_config=ruta) is False
-    assert entrada_bloqueada(f'¿Qué significa "{consulta}"?', ruta_config=ruta) is False
+    assert entrada_bloqueada(valor, ruta_config=ruta) is aislado
+    assert entrada_bloqueada(f'¿Qué significa "{consulta}"?', ruta_config=ruta) is True
 
 
 @pytest.mark.parametrize("clave", [

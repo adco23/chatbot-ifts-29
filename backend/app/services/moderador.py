@@ -1,4 +1,4 @@
-"""T47: guardas locales sobre entrada sanitizada, sin logs ni servicios externos."""
+"""T47: catálogo institucional estricto sobre entrada sanitizada, sin logs ni APIs."""
 
 import json
 import re
@@ -27,6 +27,7 @@ _CLAVES = (
     "insultos", "insultos_aislados", "groserias_contextuales", "amenazas_frases",
     "discriminacion_frases", "incitaciones_discriminatorias", "terminos_grupo",
 )
+_CLAVES_OPCIONALES = ("frases_bloqueadas",)
 # Respaldo deliberadamente pequeño y conocido, no una copia del catálogo editable.
 _RESPALDO = {
     "insultos": ("idiota", "imbecil", "pelotudo"),
@@ -37,17 +38,6 @@ _RESPALDO = {
     "incitaciones_discriminatorias": ("hay que exterminar a",),
     "terminos_grupo": ("negro", "inmigrante"),
 }
-_NEGACION_PREVIA = re.compile(r"\b(?:no|nunca|jamas)\s+$")
-
-# Excepción acotada a una pregunta explicativa completa con una sola cita.
-# No basta incluir «estoy estudiando», ni agregar una agresión fuera de la cita.
-_EXPLICACION_CITADA = re.compile(
-    r"^¿?(?:que significa|que quiere decir|como se interpreta|explicame)\s+"
-    r"(?:(?:la palabra|la frase|la expresion|el termino)\s+)?"
-    r"(?:\"[^\"“”«»']+\"|“[^\"“”«»']+”|«[^\"“”«»']+»|'[^\"“”«»']+')"
-    r"(?:\s+(?:en este contexto|en un texto|en un contexto academico|"
-    r"en analisis del discurso))?[?.!]*$"
-)
 
 
 @dataclass(frozen=True)
@@ -60,6 +50,7 @@ class CatalogoModeracion:
     incitaciones_discriminatorias: tuple[str, ...]
     terminos_grupo: tuple[str, ...]
     patrones: tuple[re.Pattern[str], ...] = field(repr=False)
+    frases_bloqueadas: tuple[str, ...] = ()
 
 
 class _CatalogoInvalido(ValueError):
@@ -67,11 +58,14 @@ class _CatalogoInvalido(ValueError):
 
 
 def _validar_catalogo(datos: object) -> dict[str, tuple[str, ...]]:
-    if not isinstance(datos, dict) or set(datos) != set(_CLAVES):
+    if (not isinstance(datos, dict) or not set(_CLAVES).issubset(datos)
+            or set(datos) - set(_CLAVES + _CLAVES_OPCIONALES)):
         raise _CatalogoInvalido("Estructura de catálogo inválida.")
     vocabulario = {}
     palabras = {"insultos", "insultos_aislados", "groserias_contextuales", "terminos_grupo"}
-    for clave in _CLAVES:
+    for clave in _CLAVES + _CLAVES_OPCIONALES:
+        if clave not in datos:
+            continue
         valores = datos[clave]
         if not isinstance(valores, list) or not valores:
             raise _CatalogoInvalido("Se requieren listas no vacías.")
@@ -100,17 +94,19 @@ def _variantes(palabra: str) -> set[str]:
     return formas
 
 
-def _alternativas(valores, *, variantes=False) -> str:
+def _alternativas(valores, *, variantes=False, repeticiones=False) -> str:
     formas = {forma for valor in valores
               for forma in (_variantes(valor) if variantes else {valor})}
     ordenadas = sorted(formas, key=lambda v: (-len(v), v))
-    return "(?:" + "|".join(re.escape(v) for v in ordenadas) + ")"
+    return "(?:" + "|".join(
+        re.escape(v[:-1]) + re.escape(v[-1]) + "+" if repeticiones else re.escape(v)
+        for v in ordenadas
+    ) + ")"
 
 
 def _construir_catalogo(vocabulario: dict[str, tuple[str, ...]]) -> CatalogoModeracion:
-    insultos = _alternativas(vocabulario["insultos"], variantes=True)
-    aislados = _alternativas(vocabulario["insultos_aislados"], variantes=True)
-    groserias = _alternativas(vocabulario["groserias_contextuales"])
+    insultos = _alternativas(vocabulario["insultos"], variantes=True, repeticiones=True)
+    groserias = _alternativas(vocabulario["groserias_contextuales"], repeticiones=True)
     grupos = _alternativas(vocabulario["terminos_grupo"], variantes=True)
     degradantes = _alternativas(vocabulario["discriminacion_frases"])
     incitaciones = _alternativas(vocabulario["incitaciones_discriminatorias"])
@@ -124,15 +120,17 @@ def _construir_catalogo(vocabulario: dict[str, tuple[str, ...]]) -> CatalogoMode
                 for enlace in ("encontrar", "buscar"):
                     amenazas.add(f"te voy a {enlace} y {accion}")
     patrones = (
-        rf"\b(?:sos|eres|usted es|ustedes son)\s+"
-        rf"(?:(?:un|una|unos|unas|muy|re)\s+)?{insultos}\b",
-        rf"\bque\s+{insultos}\s+que\s+(?:sos|eres|son)\b",
-        rf"\b(?:anda(?:te)?|vete)\s+(?:a la|al)\s+{groserias}\b",
-        rf"(?:^|\baclaracion:\s*)[¡¿]?{aislados}\b[.!?¡¿]*\s*(?=$|\baclaracion:)",
+        # Una palabra configurada se bloquea en cualquier posición, también citada.
+        rf"\b{insultos}\b",
+        rf"\b{groserias}\b",
         rf"\b{_alternativas(amenazas)}\b",
+        # Los nombres de grupos no son insultos por sí solos.
         rf"\b(?:(?:sos|eres|usted es)\s+(?:un|una)|los|las)\s+{grupos}\s+{degradantes}\b",
         rf"\b{incitaciones}\s+(?:(?:todos|todas)\s+)?(?:los|las)\s+{grupos}\b",
     )
+    frases = vocabulario.get("frases_bloqueadas", ())
+    if frases:
+        patrones += (rf"\b{_alternativas(frases, repeticiones=True)}\b",)
     return CatalogoModeracion(**vocabulario, patrones=tuple(re.compile(p) for p in patrones))
 
 
@@ -152,15 +150,7 @@ def cargar_catalogo(ruta_config: Path | None = None) -> CatalogoModeracion:
 
 
 def _hay_agresion(normalizado: str, catalogo: CatalogoModeracion) -> bool:
-    if _EXPLICACION_CITADA.fullmatch(normalizado):
-        return False
-    for patron in catalogo.patrones:
-        for coincidencia in patron.finditer(normalizado):
-            # La negación sólo excluye su propia coincidencia, nunca otra agresión.
-            antes = normalizado[max(0, coincidencia.start() - 12):coincidencia.start()]
-            if not _NEGACION_PREVIA.search(antes):
-                return True
-    return False
+    return any(patron.search(normalizado) for patron in catalogo.patrones)
 
 
 def entrada_bloqueada(texto: str, *, ruta_config: Path | None = None) -> bool:

@@ -335,7 +335,7 @@ async def run_full_sync(
                 categoria = "baja_nombre_invalido_fallida"
                 await _inactivar_invalido(anterior, ejecucion_id)
                 raise error
-            if anterior is not None and not _version_distinta(documento, anterior):
+            if anterior is not None and not forzar and not _version_distinta(documento, anterior):
                 if (_metadata_distinta(documento, anterior, metadata)
                         or anterior.estado != "activo" or anterior.vigente is not True):
                     categoria = "lectura_coherencia_fallida"

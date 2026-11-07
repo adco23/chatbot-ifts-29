@@ -16,7 +16,7 @@ from app.services.temporalidad import advertencia_temporal
 from app.services.eventos_cronograma import identificar_evento
 from app.services.comisiones import cargar_catalogo, normalizar_periodo
 from app.services.objetivo_consulta import (
-    contenido_pertinente, faq_compatible, identificar_objetivo,
+    contenido_pertinente, faq_compatible, identificar_objetivo, total_plan_respaldado,
 )
 from app.services.validacion_embeddings_rag import (
     validar_configuracion_rag,
@@ -152,6 +152,8 @@ async def buscar_faq(
         }), fragmentos, fragmento_ids_primarios=primarios,
             documento_ids_permitidos={f.documento_id for f in fragmentos},
             consulta=texto if pedido.tipo_documental == "cronograma" else None)
+        if not total_plan_respaldado(texto, [f.contenido for f in usados], respuesta=salida.respuesta):
+            return None
         usados = [originales[f.fragmento_id] for f in usados]
         fuentes = await resolver_fuentes(usados)
         esperados = {

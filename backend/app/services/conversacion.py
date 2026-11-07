@@ -35,7 +35,7 @@ from app.services.postprocesador import (
     ErrorPostproceso, registrar_etapa, validar_generacion,
 )
 from app.services.sinonimos import resolver_materia
-from app.services.respuestas_locales import respuesta_local
+from app.services.respuestas_locales import respuesta_local, respuesta_social
 from app.services.recuperador import recuperar_fragmentos
 from app.services.sanitizador import normalizar_comparacion
 from app.services.temporalidad import advertencia_temporal
@@ -45,7 +45,7 @@ from app.services.eventos_cronograma import (
 from app.services.comisiones import cargar_catalogo, normalizar_comision, normalizar_periodo
 from app.services.objetivo_consulta import (
     OBJETIVOS_DIRIGIDOS, consulta_dirigida, contenido_pertinente,
-    identificar_objetivo, respuesta_compatible, texto_abstencion,
+    identificar_objetivo, respuesta_compatible, texto_abstencion, total_plan_respaldado,
 )
 from app.services.seleccion_evidencia import seleccionar
 
@@ -100,7 +100,13 @@ def _extraer_comision(texto, comisiones=()):
 
 def _resolver_contexto(contexto, texto, materias, *, catalogo=None):
     cambios = {}
-    if contexto.materia_id is None:
+    partes = re.split(r"\baclaracion\s*:\s*", normalizar_comparacion(texto))
+    # La última intervención puede cambiar explícitamente la materia. Una aclaración
+    # breve no contiene una materia y conserva la ya resuelta para la consulta pendiente.
+    materia = resolver_materia(partes[-1], materias)
+    if materia is not None:
+        cambios["materia_id"] = materia.id
+    elif contexto.materia_id is None:
         materia = resolver_materia(texto, materias)
         if materia is not None:
             cambios["materia_id"] = materia.id
@@ -111,7 +117,6 @@ def _resolver_contexto(contexto, texto, materias, *, catalogo=None):
     elif contexto.periodo is not None:
         cambios["periodo"] = normalizar_periodo(contexto.periodo)
     comisiones = catalogo.comisiones(cambios.get("periodo")) if catalogo is not None else ()
-    partes = re.split(r"\baclaracion\s*:\s*", normalizar_comparacion(texto))
     ultimo = _extraer_comision(partes[-1], comisiones)
     if contexto.consulta_pendiente and re.fullmatch(r"\s*(?:[a-z]|[0-9]{1,4}[a-z]?)[.!]?\s*", partes[-1]):
         cambios["comision"] = partes[-1].strip(" .!").upper()
@@ -239,8 +244,11 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
     # Atajos únicamente del chat: la curación FAQ conserva su recorrido documental.
     if captura is None:
         local = respuesta_local(texto)
+        if local is None and pendiente:
+            # Moderación ya evaluó también la pendiente. Una intervención social
+            # no la ejecuta ni la elimina: la siguiente aclaración podrá completarla.
+            local = respuesta_social(solicitud.mensaje)
         if local is not None:
-            contexto = contexto.model_copy(update={"consulta_pendiente": None})
             return responder("respondida", local)
         contacto = await asyncio.to_thread(derivacion.resolver_contacto_directo, texto)
         if contacto is not None:
@@ -472,6 +480,8 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
         for f in fragmentos
     ):
         return responder("sin_evidencia", abstencion)
+    if not total_plan_respaldado(texto, [f.contenido for f in fragmentos]):
+        return responder("sin_evidencia", abstencion, resultado)
     instrucciones = _PROMPT.read_text(encoding="utf-8")
     if objetivo in OBJETIVOS_DIRIGIDOS:
         instrucciones += (
@@ -539,6 +549,8 @@ async def _conversar(solicitud, config, embeddings, llm, *, usar_cache=True, cap
             consulta=texto if intencion == "cronograma" else None,
         )
         if not respuesta_compatible(salida.respuesta, objetivo):
+            return responder("sin_evidencia", abstencion, resultado)
+        if not total_plan_respaldado(texto, [f.contenido for f in usados], respuesta=salida.respuesta):
             return responder("sin_evidencia", abstencion, resultado)
         originales = {f.fragmento_id: f for f in fragmentos}
         usados = [originales[f.fragmento_id] for f in usados]

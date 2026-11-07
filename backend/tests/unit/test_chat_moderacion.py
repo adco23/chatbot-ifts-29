@@ -61,6 +61,8 @@ def sin_dependencias_posteriores(entorno, pasos, base):
     ("sos un pelotudo", MENSAJE_NETIQUETA),
     ("SOS UNA ESTÚPIDA", MENSAJE_NETIQUETA),
     ("idiota", MENSAJE_NETIQUETA),
+    ("que chat de mierda", MENSAJE_NETIQUETA),
+    ("puto", MENSAJE_NETIQUETA),
     ("andate a la mierda", MENSAJE_NETIQUETA),
     ("te voy a cagar a piñas", MENSAJE_NETIQUETA),
     ("te voy a matar", MENSAJE_NETIQUETA),
@@ -143,20 +145,19 @@ def test_el_bloqueo_no_omite_la_consulta_pendiente(http, entorno, pasos, base, m
     sin_dependencias_posteriores(entorno, pasos, base)
 
 
+@pytest.mark.parametrize("consulta", ["que chat de mierda", "puto"])
+def test_agresion_con_contexto_academico_no_llega_a_rag(http, entorno, pasos, base, consulta):
+    r = preguntar(http, consulta, {"materia_id": 2, "comision": "B", "periodo": "2026C2"})
+    assert r.status_code == 200 and r.json()["estado"] == "bloqueada"
+    assert r.json()["respuesta"] == MENSAJE_NETIQUETA
+    sin_dependencias_posteriores(entorno, pasos, base)
+
+
 @pytest.mark.parametrize("consulta", [
     "¿Qué significa discriminación racial?",
     "¿Qué significa la palabra negro en este contexto?",
     "Estoy estudiando discursos discriminatorios", "Soy estudiante",
     "La profesora explicó el concepto de amenaza", "negro", "rata",
-    '¿Qué significa la expresión "sos un pelotudo"?',
-    '¿Qué significa "te voy a matar" en este contexto?',
-    "boludo", "boluda", "sorete", "soreta",
-    '¿Qué significa la expresión "sos un boludo"?',
-    '¿Qué significa la expresión "sos una boluda"?',
-    '¿Qué significa la expresión "sos un sorete"?',
-    '¿Qué significa la expresión "sos una soreta"?',
-    '¿Qué significa "tarado"?', 'La palabra "idiota" aparece en el texto.',
-    '¿Qué quiere decir "andate a la mierda"?',
 ])
 def test_consulta_academica_o_ambigua_continua_flujo(http, entorno, pasos, base, consulta):
     r = preguntar(http, consulta)
@@ -169,6 +170,46 @@ def test_consulta_academica_o_ambigua_continua_flujo(http, entorno, pasos, base,
     entorno.llm.generar_con_respaldo.assert_awaited_once()
     pasos.sector.assert_not_called()
     base.rpc.assert_not_called()
+
+
+@pytest.mark.parametrize("consulta", [
+    "que chat de mierda", "PUTO!!!", "puto", "pelotudooo", "boludooo", "putooo", "mierdaaaa",
+    "sos un pelotudo", "sos una pelotuda", "sos un boludo", "sos un forro", "sos un idiota",
+    "hijo de puta", "la concha de tu madre", "la puta que te pario", "andate a la mierda",
+    "andate a cagar", "chupame un huevo", "chupame la pija", "bot de mierda",
+    "sistema de mierda", "cerrá el orto", '¿Qué significa "puto"?',
+    '¿Qué significa "hijo de puta"?', 'En este texto dice "andate a la mierda"',
+    'el profesor dijo "pelotudo"', "qué significa mierda", "boludo", "boluda", "sorete", "soreta",
+    '¿Qué significa la expresión "sos un pelotudo"?',
+    '¿Qué significa "te voy a matar" en este contexto?',
+    '¿Qué significa la expresión "sos un boludo"?',
+    '¿Qué significa la expresión "sos una boluda"?',
+    '¿Qué significa la expresión "sos un sorete"?',
+    '¿Qué significa la expresión "sos una soreta"?',
+    '¿Qué significa "tarado"?', 'La palabra "idiota" aparece en el texto.',
+    '¿Qué quiere decir "andate a la mierda"?',
+    '¿Qué significa la palabra "mierda" en este texto?',
+    '¿Qué significa la palabra "puto" en este texto?',
+])
+def test_politica_estricta_http_incluye_palabras_y_citas(http, entorno, pasos, base, consulta):
+    r = preguntar(http, consulta)
+    assert r.status_code == 200 and r.json()["estado"] == "bloqueada"
+    assert r.json()["respuesta"] == MENSAJE_NETIQUETA
+    assert r.json()["fuentes"] == []
+    sin_dependencias_posteriores(entorno, pasos, base)
+
+
+@pytest.mark.parametrize("mensaje,pendiente", [
+    ("Hola", 'El profesor dijo "pelotudo"'),
+    ('¿Qué significa "puto"?', "Quiero el cronograma"),
+])
+def test_citas_en_consulta_combinada_se_bloquean_antes_de_respuestas_locales(
+    http, entorno, pasos, base, mensaje, pendiente,
+):
+    r = preguntar(http, mensaje, {"consulta_pendiente": pendiente})
+    assert r.status_code == 200 and r.json()["estado"] == "bloqueada"
+    assert r.json()["respuesta"] == MENSAJE_NETIQUETA
+    sin_dependencias_posteriores(entorno, pasos, base)
 
 
 def test_faq_hit_siguen_sin_generacion_ni_derivacion(http, entorno, pasos, base):
