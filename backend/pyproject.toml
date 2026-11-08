@@ -1,0 +1,25 @@
+# Las dependencias se declaran en requirements.txt y requirements-dev.txt.
+# La versión de Python se fija en .python-version.
+
+[tool.vercel]
+entrypoint = "app.main:app"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "integracion: llama a los proveedores reales; necesita claves y consume cuota",
+]
+# Las pruebas de integración quedan excluidas por defecto. Se ejecutan con
+# `pytest -m integracion`.
+addopts = "-m 'not integracion'"
