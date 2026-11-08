@@ -75,6 +75,11 @@ temp/
 /data/
 backend/scripts/salida/
 
+# Entradas locales para pruebas manuales de chat y FAQ
+/body_chat.json
+/backend/body_chat.json
+/backend/examples/faq_prueba.json
+
 # Documentos descargados de Drive para pruebas locales
 backend/.cache/
 backend/descargas/
@@ -96,3 +101,9 @@ backend/descargas/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ============================================
+# Otros
+# ============================================
+.claude/*
+CLAUDE.md

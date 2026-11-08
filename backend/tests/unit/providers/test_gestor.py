@@ -47,21 +47,27 @@ def test_falla_recuperable_en_el_primero_y_responde_el_segundo(excepcion):
     respuesta = generar(GestorProveedores([primero, segundo], presupuesto_segundos=5))
 
     assert respuesta.proveedor == "segundo"
-    assert (primero.llamadas, segundo.llamadas) == (1, 1)
+    assert (primero.llamadas, segundo.llamadas) == (2 if excepcion is ErrorTemporal else 1, 1)
 
 
-@pytest.mark.parametrize("excepcion", [ErrorNoRecuperable, ContenidoBloqueado])
-def test_error_no_recuperable_se_propaga_y_no_se_llama_al_segundo(excepcion):
-    error = excepcion()
+def test_bloqueo_se_propaga_y_no_se_llama_al_segundo():
+    error = ContenidoBloqueado()
     primero = ProveedorFalso([error], nombre="primero")
     segundo = ProveedorFalso([TEXTO_RESPUESTA], nombre="segundo")
 
-    with pytest.raises(excepcion) as info:
+    with pytest.raises(ContenidoBloqueado) as info:
         generar(GestorProveedores([primero, segundo], presupuesto_segundos=5))
 
     assert info.value is error
     assert info.value.proveedor == "primero"
     assert segundo.llamadas == 0
+
+
+def test_error_permanente_no_reintenta_principal_pero_prueba_respaldo():
+    primero = ProveedorFalso([ErrorNoRecuperable()], nombre="primero")
+    segundo = ProveedorFalso([TEXTO_RESPUESTA], nombre="segundo")
+    assert generar(GestorProveedores([primero, segundo], 5)).proveedor == "segundo"
+    assert (primero.llamadas, segundo.llamadas) == (1, 1)
 
 
 def test_fallan_todos_y_se_informa_la_lista_completa_de_errores():
@@ -89,19 +95,17 @@ def test_lista_vacia_informa_que_no_hay_proveedores():
     assert str(info.value) == "No hay proveedores de modelo de lenguaje configurados."
 
 
-def test_proveedor_lento_es_cortado_al_llegar_al_presupuesto():
+def test_proveedor_lento_es_cortado_reservando_tiempo_al_respaldo():
     lento = ProveedorFalso([TEXTO_RESPUESTA], nombre="lento", latencia_segundos=2)
     segundo = ProveedorFalso([TEXTO_RESPUESTA], nombre="segundo")
 
     inicio = time.monotonic()
-    with pytest.raises(TodosLosProveedoresFallaron) as info:
-        generar(GestorProveedores([lento, segundo], presupuesto_segundos=0.1))
+    respuesta = generar(GestorProveedores([lento, segundo], presupuesto_segundos=0.1))
     duracion = time.monotonic() - inicio
 
     assert duracion < 1
-    # El lento agotó el presupuesto: el segundo se queda sin tiempo y no se intenta.
-    assert [(type(e), e.proveedor) for e in info.value.errores] == [(ErrorTemporal, "lento")]
-    assert (lento.llamadas, segundo.llamadas) == (1, 0)
+    assert respuesta.proveedor == "segundo"
+    assert (lento.llamadas, segundo.llamadas) == (1, 1)
 
 
 def test_el_segundo_solo_dispone_del_tiempo_restante():

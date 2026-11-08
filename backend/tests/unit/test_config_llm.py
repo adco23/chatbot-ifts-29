@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.config import obtener_configuracion
+from app.settings import obtener_configuracion
 
 # Valores ficticios: no son claves reales ni tienen su formato.
 CLAVE_GEMINI = "clave-ficticia-gemini"
@@ -139,3 +139,52 @@ def test_las_claves_no_aparecen_en_errores_de_validacion(monkeypatch, variable, 
 
 def test_health_responde_200_sin_variables(cliente):
     assert cliente.get("/health").status_code == 200
+
+
+def test_retry_llm_configurable_sin_modificar_embeddings(monkeypatch):
+    config = obtener_configuracion()
+    assert config.llm_reintentos_principal == 1 and config.llm_backoff_segundos == 1.0
+    monkeypatch.setenv("LLM_REINTENTOS_PRINCIPAL", "0")
+    monkeypatch.setenv("LLM_BACKOFF_SEGUNDOS", "0.1")
+    obtener_configuracion.cache_clear()
+    config = obtener_configuracion()
+    assert config.llm_reintentos_principal == 0 and config.llm_backoff_segundos == 0.1
+    assert config.gemini_embedding_dimension == 768 and config.embedding_primary == "gemini"
+
+
+@pytest.mark.parametrize("variable,valor", [
+    ("LLM_REINTENTOS_PRINCIPAL", "-1"), ("LLM_REINTENTOS_PRINCIPAL", "2"),
+    ("LLM_BACKOFF_SEGUNDOS", "-0.1"), ("LLM_BACKOFF_SEGUNDOS", "NaN"),
+    ("LLM_BACKOFF_SEGUNDOS", "inf"),
+])
+def test_config_retry_llm_invalida(monkeypatch, variable, valor):
+    monkeypatch.setenv(variable, valor)
+    with pytest.raises(ValidationError):
+        obtener_configuracion()
+
+
+def test_niveles_de_razonamiento_por_defecto():
+    config = obtener_configuracion()
+    assert config.gemini_nivel_razonamiento == "LOW"
+    assert config.groq_esfuerzo_razonamiento == "low"
+
+
+@pytest.mark.parametrize("variable,valor,campo,esperado", [
+    ("GEMINI_NIVEL_RAZONAMIENTO", " high ", "gemini_nivel_razonamiento", "HIGH"),
+    ("GEMINI_NIVEL_RAZONAMIENTO", "", "gemini_nivel_razonamiento", None),
+    ("GROQ_ESFUERZO_RAZONAMIENTO", "MEDIUM", "groq_esfuerzo_razonamiento", "medium"),
+    ("GROQ_ESFUERZO_RAZONAMIENTO", "  ", "groq_esfuerzo_razonamiento", None),
+])
+def test_niveles_de_razonamiento_se_normalizan(monkeypatch, variable, valor, campo, esperado):
+    monkeypatch.setenv(variable, valor)
+    assert getattr(obtener_configuracion(), campo) == esperado
+
+
+@pytest.mark.parametrize("variable,valor", [
+    ("GEMINI_NIVEL_RAZONAMIENTO", "bajo"), ("GEMINI_NIVEL_RAZONAMIENTO", "none"),
+    ("GROQ_ESFUERZO_RAZONAMIENTO", "minimal"), ("GROQ_ESFUERZO_RAZONAMIENTO", "xhigh"),
+])
+def test_nivel_de_razonamiento_desconocido_lanza_error(monkeypatch, variable, valor):
+    monkeypatch.setenv(variable, valor)
+    with pytest.raises(ValidationError, match=variable):
+        obtener_configuracion()

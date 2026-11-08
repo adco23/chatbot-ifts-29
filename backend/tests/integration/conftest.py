@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from app.config import Configuracion
+from app.settings import Configuracion
 
 RAIZ_BACKEND = Path(__file__).resolve().parents[2]
 

@@ -3,9 +3,26 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.config import Configuracion, obtener_configuracion
-from app.main import app
+from app.settings import Configuracion, obtener_configuracion
+from app.db.conexion import obtener_cliente_supabase
 from app.providers.dependencias import obtener_gestor_proveedores
+from app.providers.embeddings.dependencias import obtener_gestor_embeddings
+from app.services.limite_solicitudes import obtener_contador_solicitudes
+
+# Funciones que guardan su resultado por proceso: se vacían antes y después de cada
+# prueba para que ninguna herede la configuración ni el estado de otra.
+_CON_CACHE = (
+    obtener_configuracion,
+    obtener_gestor_proveedores,
+    obtener_gestor_embeddings,
+    obtener_contador_solicitudes,
+    obtener_cliente_supabase,
+)
+
+
+def _vaciar_caches() -> None:
+    for funcion in _CON_CACHE:
+        funcion.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -14,14 +31,33 @@ def configuracion_aislada(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     for campo in Configuracion.model_fields:
         monkeypatch.delenv(campo.upper(), raising=False)
-    obtener_configuracion.cache_clear()
-    obtener_gestor_proveedores.cache_clear()
+    _vaciar_caches()
     yield
-    obtener_configuracion.cache_clear()
-    obtener_gestor_proveedores.cache_clear()
+    _vaciar_caches()
 
 
 @pytest.fixture
-def cliente() -> TestClient:
+def cliente(configuracion_aislada) -> TestClient:
     """Cliente HTTP de prueba contra la aplicación."""
+    from app.main import app
+
+    _vaciar_caches()
     return TestClient(app)
+
+
+@pytest.fixture
+def catalogo_historico_f(monkeypatch):
+    """Catálogo sintético explícito de las pruebas anteriores a la política A–D.
+
+    Permite seguir probando eventos/proveedores con sus datos históricos F;
+    las regresiones del catálogo oficial usan el archivo de producción sin este doble.
+    """
+    from app.services import cache_faq, conversacion
+    from app.services.comisiones import CatalogoComisiones
+
+    catalogo = CatalogoComisiones("2026C2", {
+        p: ("A", "B", "C", "D", "F") for p in ("2026C1", "2026C2", "2027C1")
+    })
+    monkeypatch.setattr(conversacion, "cargar_catalogo", lambda: catalogo)
+    monkeypatch.setattr(cache_faq, "cargar_catalogo", lambda: catalogo)
+    return catalogo

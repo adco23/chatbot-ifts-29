@@ -1,4 +1,20 @@
+# Framework web y servidor
 fastapi==0.143.0
-httpx==0.28.1
-pydantic-settings==2.15.0
 uvicorn==0.54.0
+# Configuración y HTTP
+pydantic-settings==2.15.0
+httpx==0.28.1
+# Base de datos
+supabase==2.31.0
+# Google Drive
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+# Limpieza de texto
+unidecode
+thefuzz
+# Extracción de PDF y Word
+pypdf
+python-docx
+# Fragmentación de texto
+langchain-text-splitters

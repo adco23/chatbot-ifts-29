@@ -1,0 +1,53 @@
+.globo {
+  position: relative;
+  /* Ancho fijo: el tamaño del iframe cerrado se calcula a partir de él. */
+  flex: none;
+  width: 240px;
+  animation: aparecer var(--duracion) ease-out both;
+}
+
+.texto {
+  display: block;
+  width: 100%;
+  padding: var(--espacio-4) var(--espacio-5);
+  border: 0;
+  border-radius: var(--radio-globo);
+  background: var(--color-blanco);
+  color: var(--color-marino);
+  font-size: var(--texto-md);
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: left;
+  box-shadow: var(--sombra-suave);
+  cursor: pointer;
+}
+
+.descartar {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 2px solid var(--color-blanco);
+  border-radius: 50%;
+  background: var(--color-marino);
+  color: var(--color-blanco);
+  cursor: pointer;
+}
+
+/* Área táctil más grande que el círculo visible. */
+.descartar::after {
+  content: '';
+  position: absolute;
+  inset: -9px;
+}
+
+@keyframes aparecer {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}

@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="es-AR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="data:," />
+    <title>Simulación de aula · pruebas del asistente</title>
+  </head>
+  <body>
+    <!-- Cartel obligatorio: esta página NO es el campus real. -->
+    <aside class="cartel-simulacion" aria-label="Aviso de simulación">
+      Entorno de simulación para pruebas del asistente. No es el campus real.
+    </aside>
+
+    <header>
+      <div class="barra-superior">
+        <nav class="barra-iconos" aria-label="Herramientas (simuladas)">
+          <button type="button" class="icono-barra" aria-label="Buscar (simulado)">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="10.5" cy="10.5" r="6.5" />
+              <line x1="15.5" y1="15.5" x2="20" y2="20" />
+            </svg>
+          </button>
+          <button type="button" class="icono-barra" aria-label="Notificaciones (simulado)">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15z" />
+              <path d="M10 21h4" />
+            </svg>
+          </button>
+          <button type="button" class="icono-barra" aria-label="Mensajes (simulado)">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 12a8 7 0 1 1 3.5 5.8L4 19.5l1.2-3.6A6.6 6.6 0 0 1 4 12z" />
+            </svg>
+          </button>
+          <button type="button" class="icono-barra" aria-label="Correo (simulado)">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3.5" y="6" width="17" height="12" rx="1.5" />
+              <path d="M4 7l8 6 8-6" />
+            </svg>
+          </button>
+          <button type="button" class="menu-usuario" aria-label="EP, menú de usuario (simulado)">
+            <span class="avatar" aria-hidden="true">EP</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true" class="flecha">
+              <path d="M7 10l5 5 5-5" />
+            </svg>
+          </button>
+        </nav>
+      </div>
+
+      <div class="cabecera">
+        <div class="logo-placeholder" role="img" aria-label="Logo (placeholder)">Logo</div>
+        <nav aria-label="Navegación principal (simulada)" class="enlaces-cabecera">
+          <a href="#">Página Principal</a>
+          <a href="#">Mis cursos</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="contenido" class="pagina">
+      <h1 class="titulo-curso">Aula de ejemplo</h1>
+
+      <div class="fila-pestanas">
+        <nav class="pestanas" aria-label="Secciones del curso (simuladas)">
+          <a href="#" class="pestana activa" aria-current="page">Curso</a>
+          <a href="#" class="pestana">Participantes</a>
+          <a href="#" class="pestana">Calificaciones</a>
+          <a href="#" class="pestana">Competencias</a>
+        </nav>
+        <div class="botones-cajon">
+          <button
+            type="button"
+            id="abrir-cajon"
+            class="boton-circular"
+            aria-controls="cajon"
+            aria-expanded="false"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="6" cy="12" r="1.6" />
+              <circle cx="12" cy="12" r="1.6" />
+              <circle cx="18" cy="12" r="1.6" />
+            </svg>
+            <span class="solo-lectores">Abrir el cajón de bloques</span>
+          </button>
+          <button type="button" id="cerrar-cajon" class="boton-circular" aria-controls="cajon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" /></svg>
+            <span class="solo-lectores">Cerrar el cajón de bloques</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="columna">
+        <div class="banner-curso" role="img" aria-label="Banner del curso (placeholder)">
+          <div class="banner-izquierda">Logo</div>
+          <div class="banner-derecha">
+            <span class="banner-etiqueta">CATEGORÍA</span>
+            <span class="banner-texto">Carrera de ejemplo</span>
+          </div>
+        </div>
+
+        <section class="tarjeta" aria-labelledby="bienvenida-titulo">
+          <div class="tarjeta-acciones">
+            <button type="button" class="boton-finalizar">Marcar como finalizada</button>
+          </div>
+          <div class="bienvenida">
+            <h2 id="bienvenida-titulo">Bienvenida (texto de ejemplo)</h2>
+            <p>
+              Este espacio simula la portada de un aula virtual para probar cómo se ve y se usa el
+              asistente embebido. Los textos, bloques y porcentajes son de ejemplo.
+            </p>
+          </div>
+        </section>
+
+        <div class="tarjeta actividad">
+          <span class="icono-actividad" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <rect x="5" y="5" width="14" height="11" rx="1.5" />
+              <path d="M8 9h8M8 12h5M10 16l-2 3v-3" />
+            </svg>
+          </span>
+          <a href="#">Avisos</a>
+        </div>
+        <div class="tarjeta actividad">
+          <span class="icono-actividad" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <rect x="5" y="5" width="14" height="11" rx="1.5" />
+              <path d="M8 9h8M8 12h5M10 16l-2 3v-3" />
+            </svg>
+          </span>
+          <a href="#">Foro de dudas y consultas</a>
+          <button type="button" class="boton-finalizar">Marcar como finalizada</button>
+        </div>
+
+        <!-- modo=incrustado&ubicacion=seccion inserta el iframe acá. -->
+        <section
+          id="seccion-asistente"
+          class="tarjeta seccion-asistente"
+          hidden
+          aria-label="Sección con el asistente"
+        >
+          <h2>Asistente virtual (sección del curso)</h2>
+        </section>
+
+        <div class="progreso-general">
+          <span>Progreso general %</span>
+          <span class="circulo-progreso" aria-label="3 por ciento">3</span>
+        </div>
+
+        <div id="grilla" class="grilla"></div>
+      </div>
+    </main>
+
+    <aside id="cajon" class="cajon" hidden aria-label="Cajón de bloques">
+      <div class="cajon-encabezado">
+        <h2>Bloques</h2>
+      </div>
+      <section class="bloque">
+        <h3>Bloque de ejemplo</h3>
+        <p>Contenido de un bloque lateral de ejemplo.</p>
+      </section>
+      <!-- modo=incrustado&ubicacion=cajon inserta el iframe acá. -->
+      <section id="bloque-asistente" class="bloque" hidden aria-label="Bloque con el asistente">
+        <h3>Asistente virtual</h3>
+      </section>
+    </aside>
+
+    <footer class="pie">
+      <div class="pie-interior">
+        <div class="pie-logos">
+          <div class="logo-placeholder oscuro">Logo</div>
+          <div class="logo-placeholder oscuro">Logo</div>
+        </div>
+        <ul class="redes" aria-label="Redes (placeholders)">
+          <li><span class="red" aria-label="Red social de ejemplo 1">1</span></li>
+          <li><span class="red" aria-label="Red social de ejemplo 2">2</span></li>
+          <li><span class="red" aria-label="Red social de ejemplo 3">3</span></li>
+          <li><span class="red" aria-label="Red social de ejemplo 4">4</span></li>
+        </ul>
+      </div>
+    </footer>
+
+    <!-- Imita el botón de ayuda de Moodle: el lanzador del asistente no debe taparlo. -->
+    <button type="button" id="ayuda-moodle" class="ayuda-moodle" aria-label="Ayuda (simulado)">
+      ?
+    </button>
+
+    <details id="depuracion" class="depuracion">
+      <summary>Depuración</summary>
+      <dl>
+        <dt>Modo</dt>
+        <dd id="dep-modo"></dd>
+        <dt>URL del iframe</dt>
+        <dd id="dep-url">—</dd>
+        <dt>Tamaño del iframe</dt>
+        <dd id="dep-tamano">—</dd>
+      </dl>
+      <form id="dep-form">
+        <label>
+          Modo
+          <select name="modo">
+            <option value="flotante">flotante (embed.js)</option>
+            <option value="flotante-iframe">flotante-iframe (sin script)</option>
+            <option value="incrustado">incrustado</option>
+          </select>
+        </label>
+        <label>
+          Ubicación (incrustado)
+          <select name="ubicacion">
+            <option value="seccion">sección</option>
+            <option value="cajon">cajón</option>
+          </select>
+        </label>
+        <label>
+          Offset inferior (px)
+          <input name="offset" type="number" min="0" max="400" step="4" />
+        </label>
+        <label>
+          Ancho (px, sin script e incrustado)
+          <input name="ancho" type="number" min="240" max="800" step="10" />
+        </label>
+        <button type="submit">Aplicar y recargar</button>
+      </form>
+    </details>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

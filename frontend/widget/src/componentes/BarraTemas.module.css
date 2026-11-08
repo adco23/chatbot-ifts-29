@@ -1,0 +1,52 @@
+.barra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espacio-2);
+  padding: var(--espacio-3);
+  border-top: 1px solid var(--color-borde);
+  background: var(--color-blanco);
+  /* Nunca más de un tercio del panel: el resto queda para la conversación. */
+  max-height: 34cqh;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.compacta {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-height: none;
+  scrollbar-width: thin;
+}
+
+/* Panel bajo (zoom, celular apaisado): una sola fila desde el principio. */
+@container panel-chat (max-height: 480px) {
+  .barra {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-height: none;
+  }
+}
+
+.chip {
+  flex: none;
+  padding: 6px 12px;
+  border: 1px solid var(--color-azul);
+  border-radius: 999px;
+  background: var(--color-blanco);
+  color: var(--color-azul);
+  font-size: var(--texto-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--duracion);
+}
+
+.chip:hover:not(:disabled) {
+  background: #eaf1fb;
+}
+
+.chip:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

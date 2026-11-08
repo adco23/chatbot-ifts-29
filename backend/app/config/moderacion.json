@@ -1,0 +1,50 @@
+{
+  "insultos": [
+    "pelotudo", "boludo", "forro", "tarado", "idiota", "imbécil", "estúpido",
+    "sorete", "soreta", "gil", "salame", "pavote", "pavota", "nabo", "inútil", "pajero",
+    "conchudo", "cagón", "cagona", "choto", "puto", "cornudo", "ortiva",
+    "mierda", "trabuco"
+  ],
+  "insultos_aislados": [
+    "pelotudo", "tarado", "idiota", "imbecil", "estupido", "puto"
+  ],
+  "groserias_contextuales": [
+    "mierda", "mierdas", "carajo", "carajos", "pelotudez", "pelotudeces",
+    "boludez", "boludeces", "cagada", "cagadas", "culo", "culos", "orto",
+    "pija", "pijazo", "verga", "poronga", "concha"
+  ],
+  "frases_bloqueadas": [
+    "hijo de puta", "hija de puta", "hijos de puta", "hijas de puta",
+    "la concha de tu madre", "concha de tu madre", "la puta que te parió",
+    "andate a la mierda", "vete a la mierda", "andate a cagar", "anda a cagar",
+    "chupame un huevo", "chupame los huevos", "chupame la pija", "me chupa un huevo",
+    "chat de mierda", "bot de mierda", "asistente de mierda", "sistema de mierda",
+    "pedazo de mierda", "pedazo de pelotudo", "pedazo de boludo", "pedazo de forro",
+    "sos un pelotudo", "sos una pelotuda", "sos un boludo", "sos una boluda",
+    "sos un forro", "sos una forra", "sos un idiota", "sos un inútil",
+    "sos una mierda", "sos un sorete", "sos un pajero", "que chat de mierda",
+    "que bot de mierda", "cerrá el orto", "callate pelotudo"
+  ],
+  "amenazas_frases": [
+    "te voy a matar",
+    "te voy a pegar",
+    "te voy a golpear",
+    "te voy a lastimar",
+    "te voy a cagar a piñas",
+    "te voy a romper la cara"
+  ],
+  "discriminacion_frases": [
+    "de mierda", "asqueroso", "asquerosa",
+    "son inferiores", "son basura", "son escoria"
+  ],
+  "incitaciones_discriminatorias": [
+    "hay que eliminar a",
+    "hay que exterminar a",
+    "deberiamos eliminar a",
+    "deberiamos exterminar a"
+  ],
+  "terminos_grupo": [
+    "negro", "judio", "inmigrante", "extranjero", "gay",
+    "homosexual", "musulman", "musulmana", "discapacitado"
+  ]
+}

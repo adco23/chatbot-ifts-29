@@ -1,0 +1,72 @@
+/*
+ * Tokens de diseño del widget. Valores aproximados, estimados a partir de las capturas de
+ * docs/diseno/ (sin Figma). Ajustar acá, no en los componentes.
+ *
+ * Contraste medido (WCAG 2.1, texto normal ≥ 4.5:1):
+ *   --color-link sobre blanco            6.29:1 (el celeste de la captura daba 2.88:1)
+ *   blanco sobre --color-naranja         4.89:1 (el naranja de la captura daba 3.17:1)
+ *   --color-azul sobre blanco            5.84:1 (chips, botón Enviar, burbuja del estudiante)
+ *   --color-texto sobre --color-burbuja-bot 12.27:1
+ *   --color-texto-suave sobre --color-burbuja-bot 5.11:1
+ *   --color-borde-campo sobre blanco     3.51:1 (componente de interfaz, mínimo 3:1)
+ */
+:root {
+  /* Paleta */
+  --color-marino: #16303f;
+  --color-turquesa: #7ad6c3;
+  --color-azul: #1d62c4;
+  --color-azul-hover: #174f9e;
+  --color-naranja: #c8432a;
+  --color-blanco: #ffffff;
+  --color-fondo-cuerpo: #f3f5f8;
+  --color-burbuja-bot: #e3e8ef;
+  --color-texto: #1d2733;
+  --color-texto-suave: #56616f;
+  --color-borde: #d5dce5;
+  --color-borde-campo: #7d8a9b;
+  --color-link: #1a5fb4;
+  --color-foco: #1d62c4;
+  --color-error-fondo: #fdecea;
+  --color-error-texto: #8a1c0f;
+  --color-aviso-fondo: #fff6e0;
+  --color-aviso-borde: #c98a00;
+
+  /* Tipografía: Roboto si está instalada (Android, muchas PC); si no, la del sistema. */
+  --fuente: Roboto, system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --texto-xs: 0.75rem;
+  --texto-sm: 0.875rem;
+  --texto-md: 0.9375rem;
+  --texto-lg: 1.0625rem;
+
+  /* Medidas */
+  --panel-ancho: 380px;
+  --panel-alto: 580px;
+  /* Diámetro total del lanzador, aro incluido (máximo pedido: 40 px). */
+  --lanzador-tamano: 40px;
+  /*
+   * Distancia del lanzador al borde derecho. Alinea su centro con el del botón "?" de Moodle
+   * (right: 2rem, 36 px de ancho → centro a 50 px): 50 − 40 / 2 = 30 px.
+   */
+  --lanzador-derecha: 30px;
+  --lanzador-aro: 2px;
+  --insignia-tamano: 16px;
+  --radio-burbuja: 16px;
+  --radio-globo: 22px;
+  --radio-panel: 16px;
+  --espacio-1: 4px;
+  --espacio-2: 8px;
+  --espacio-3: 12px;
+  --espacio-4: 16px;
+  --espacio-5: 24px;
+
+  /* Sombras y movimiento */
+  --sombra-suave: 0 4px 14px rgb(15 42 74 / 22%);
+  --sombra-panel: 0 10px 32px rgb(15 42 74 / 28%);
+  --duracion: 180ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duracion: 0ms;
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "saludos": [
+    "hola", "buenas", "buen día", "buenos días", "buenas tardes", "buenas noches",
+    "qué tal", "cómo estás", "cómo andás", "todo bien", "hey", "ey",
+    "hola bot", "hola chat", "buenas bot", "buenas chat"
+  ],
+  "agradecimientos": [
+    "gracias", "muchas gracias", "muchísimas gracias", "gracias por la ayuda",
+    "gracias por ayudarme", "perfecto gracias", "genial gracias", "buenísimo gracias",
+    "excelente gracias", "ok gracias", "listo gracias", "dale gracias",
+    "te agradezco", "se agradece"
+  ],
+  "despedidas": [
+    "chau", "chao", "adiós", "hasta luego", "hasta después", "hasta mañana",
+    "nos vemos", "hablamos", "hablamos después", "listo chau", "gracias chau",
+    "me voy", "hasta la próxima", "que tengas buen día", "chau gracias"
+  ]
+}

@@ -1,8 +1,9 @@
 """Construcción del gestor de proveedores a partir de la configuración."""
 
 from functools import lru_cache
+import logging
 
-from app.config import Configuracion, obtener_configuracion
+from app.settings import Configuracion, obtener_configuracion
 from app.providers._http import ProveedorHTTP
 from app.providers.gemini import ProveedorGemini
 from app.providers.gestor import GestorProveedores
@@ -14,6 +15,8 @@ REGISTRO_PROVEEDORES: dict[str, type[ProveedorHTTP]] = {
     "gemini": ProveedorGemini,
     "groq": ProveedorGroq,
 }
+
+logger = logging.getLogger(__name__)
 
 
 def crear_proveedor(nombre: str, config: Configuracion) -> ProveedorHTTP:
@@ -35,13 +38,37 @@ def crear_proveedor(nombre: str, config: Configuracion) -> ProveedorHTTP:
         api_key=clave.get_secret_value(),
         modelo=getattr(config, f"{nombre}_modelo"),
         timeout_segundos=getattr(config, f"{nombre}_timeout_segundos"),
+        **_opciones_de(nombre, config),
     )
+
+
+def _opciones_de(nombre: str, config: Configuracion) -> dict[str, object]:
+    """Opciones propias de cada proveedor, además de clave, modelo y tiempo máximo."""
+    if nombre == "gemini":
+        return {"nivel_razonamiento": config.gemini_nivel_razonamiento}
+    if nombre == "groq":
+        return {"esfuerzo_razonamiento": config.groq_esfuerzo_razonamiento}
+    return {}
 
 
 def crear_gestor_proveedores(config: Configuracion) -> GestorProveedores:
     """Crea el gestor con los proveedores que tienen clave, en el orden configurado."""
     proveedores = [crear_proveedor(nombre, config) for nombre in config.proveedores_disponibles]
-    return GestorProveedores(proveedores, presupuesto_segundos=config.llm_presupuesto_segundos)
+    # Resumen de la instancia real (incluido el worker de uvicorn), nunca claves.
+    logger.warning(
+        "Gestor LLM configurado: gemini_en_gestor=%s groq_en_gestor=%s "
+        "presupuesto=%.2f s retries=%d backoff=%.2f s.",
+        "gemini" in config.proveedores_disponibles, "groq" in config.proveedores_disponibles,
+        config.llm_presupuesto_segundos, config.llm_reintentos_principal, config.llm_backoff_segundos,
+    )
+    return GestorProveedores(
+        proveedores, presupuesto_segundos=config.llm_presupuesto_segundos,
+        reintentos_principal=config.llm_reintentos_principal,
+        backoff_segundos=config.llm_backoff_segundos,
+        motivo_groq_omitido=("no configurado" if config.groq_api_key is None else
+                            "excluido del orden configurado" if "groq" not in config.llm_orden_proveedores
+                            else None),
+    )
 
 
 @lru_cache

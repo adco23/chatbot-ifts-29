@@ -1,0 +1,36 @@
+.tarjeta {
+  display: flex;
+  align-items: center;
+  gap: var(--espacio-3);
+  margin-top: var(--espacio-2);
+  padding: var(--espacio-3);
+  border-left: 4px solid var(--color-turquesa);
+  border-radius: 8px;
+  background: var(--color-blanco);
+}
+
+.tarjeta > svg {
+  flex: none;
+}
+
+.datos {
+  min-width: 0;
+}
+
+.titulo {
+  margin: 0;
+  font-weight: 700;
+  color: var(--color-texto);
+  overflow-wrap: anywhere;
+}
+
+.enlace {
+  font-size: var(--texto-sm);
+  color: var(--color-link);
+}
+
+.sinEnlace {
+  margin: 0;
+  font-size: var(--texto-sm);
+  color: var(--color-texto-suave);
+}

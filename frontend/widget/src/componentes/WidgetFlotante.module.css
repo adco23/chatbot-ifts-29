@@ -1,0 +1,54 @@
+/*
+ * --margen: separación del widget con los bordes inferior e izquierdo de su ventana (la del
+ * iframe, cuando está embebido). A la derecha se usa --lanzador-derecha, para alinear el
+ * lanzador con el botón "?" de Moodle.
+ */
+.contenedor {
+  --margen: 16px;
+
+  position: fixed;
+  right: var(--lanzador-derecha);
+  bottom: var(--margen);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--espacio-3);
+}
+
+.panel {
+  width: min(var(--panel-ancho), calc(100vw - var(--margen) - var(--lanzador-derecha)));
+  height: min(
+    var(--panel-alto),
+    calc(100dvh - var(--lanzador-tamano) - var(--espacio-3) - 2 * var(--margen))
+  );
+}
+
+.base {
+  display: flex;
+  align-items: center;
+  gap: var(--espacio-4);
+}
+
+/*
+ * El contenedor nunca se estira (sin `left`): con el chat cerrado debe medir solo lo que
+ * ocupa, porque esa medida define el tamaño del iframe de embed.js.
+ */
+@media (max-width: 480px) {
+  .contenedor {
+    --margen: 8px;
+  }
+}
+
+/*
+ * Celular: el panel ocupa casi todo el ancho y alto, con el mismo margen a ambos lados (el
+ * margen derecho negativo lo saca de la columna del lanzador). Se exige pantalla táctil
+ * porque en escritorio el iframe de embed.js también es angosto (< 480 px) y ahí el panel
+ * debe conservar su tamaño de diseño.
+ */
+@media (max-width: 480px) and (pointer: coarse) {
+  .panel {
+    width: calc(100vw - 2 * var(--margen));
+    height: calc(100dvh - var(--lanzador-tamano) - var(--espacio-3) - 2 * var(--margen));
+    margin-right: calc(var(--margen) - var(--lanzador-derecha));
+  }
+}

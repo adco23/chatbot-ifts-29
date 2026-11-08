@@ -6,7 +6,7 @@ import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from app.config import PROVEEDORES_LLM_VALIDOS, obtener_configuracion
+from app.settings import PROVEEDORES_LLM_VALIDOS, obtener_configuracion
 from app.providers import GestorProveedores, ProveedorGemini, ProveedorGroq
 from app.providers.dependencias import (
     REGISTRO_PROVEEDORES,
@@ -59,6 +59,26 @@ def test_respeta_el_orden_los_modelos_y_los_tiempos_configurados(monkeypatch):
     assert groq._api_key == CLAVE_GROQ
     assert gemini._api_key == CLAVE_GEMINI
     assert gestor.presupuesto_segundos == 7.0
+
+
+@pytest.mark.parametrize("gemini_nivel,groq_esfuerzo,esperado", [
+    (None, None, ("LOW", "low")),
+    ("high", "MEDIUM", ("HIGH", "medium")),
+    ("", "", (None, None)),
+])
+def test_pasa_los_niveles_de_razonamiento_a_cada_proveedor(
+    monkeypatch, gemini_nivel, groq_esfuerzo, esperado,
+):
+    monkeypatch.setenv("GEMINI_API_KEY", CLAVE_GEMINI)
+    monkeypatch.setenv("GROQ_API_KEY", CLAVE_GROQ)
+    if gemini_nivel is not None:
+        monkeypatch.setenv("GEMINI_NIVEL_RAZONAMIENTO", gemini_nivel)
+    if groq_esfuerzo is not None:
+        monkeypatch.setenv("GROQ_ESFUERZO_RAZONAMIENTO", groq_esfuerzo)
+
+    gemini, groq = obtener_gestor_proveedores().proveedores
+
+    assert (gemini._nivel_razonamiento, groq._esfuerzo_razonamiento) == esperado
 
 
 def test_solo_incluye_los_proveedores_con_clave(monkeypatch):

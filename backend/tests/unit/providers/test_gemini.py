@@ -47,11 +47,13 @@ def respuesta_de_error(estado: int, **error: Any) -> httpx.Response:
 
 
 def generar(
-    respuesta: httpx.Response | Exception, solicitud: SolicitudLLM | None = None
+    respuesta: httpx.Response | Exception, solicitud: SolicitudLLM | None = None,
+    **opciones: Any,
 ) -> tuple[RespuestaLLM, Captura]:
     captura = Captura(respuesta)
     proveedor = ProveedorGemini(
-        api_key=CLAVE, modelo=MODELO, timeout_segundos=5, cliente=cliente_simulado(captura)
+        api_key=CLAVE, modelo=MODELO, timeout_segundos=5, cliente=cliente_simulado(captura),
+        **opciones,
     )
     return asyncio.run(proveedor.generar(solicitud or crear_solicitud())), captura
 
@@ -270,3 +272,33 @@ def test_falla_de_certificado_se_informa_en_el_mensaje():
 
     assert type(error) is ErrorTemporal
     assert "certificado TLS" in str(error)
+
+
+@pytest.mark.parametrize("nivel", ["LOW", "HIGH"])
+def test_envia_nivel_de_razonamiento_si_se_configura(nivel):
+    _, captura = generar(respuesta_ok(), nivel_razonamiento=nivel)
+
+    assert captura.cuerpo["generationConfig"] == {"thinkingConfig": {"thinkingLevel": nivel}}
+
+
+def test_sin_nivel_de_razonamiento_no_envia_thinking_config():
+    _, captura = generar(respuesta_ok(), crear_solicitud(max_tokens=64))
+
+    assert "thinkingConfig" not in captura.cuerpo["generationConfig"]
+
+
+def test_respuesta_json_pide_mime_type_json():
+    _, captura = generar(
+        respuesta_ok(), crear_solicitud(respuesta_json=True), nivel_razonamiento="LOW"
+    )
+
+    assert captura.cuerpo["generationConfig"] == {
+        "thinkingConfig": {"thinkingLevel": "LOW"},
+        "responseMimeType": "application/json",
+    }
+
+
+def test_sin_respuesta_json_ni_opciones_no_envia_generation_config():
+    _, captura = generar(respuesta_ok())
+
+    assert "generationConfig" not in captura.cuerpo

@@ -36,6 +36,20 @@ _FINES_POR_BLOQUEO = frozenset({"SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "SP
 class ProveedorGemini(ProveedorHTTP):
     """Genera texto con un modelo de Gemini."""
 
+    def __init__(
+        self,
+        api_key: str,
+        modelo: str,
+        timeout_segundos: float,
+        cliente: httpx.AsyncClient | None = None,
+        *,
+        nivel_razonamiento: str | None = None,
+    ) -> None:
+        super().__init__(api_key, modelo, timeout_segundos, cliente)
+        # `thinkingLevel` (Gemini 3 o posterior). None: no se envía `thinkingConfig`,
+        # que los modelos sin razonamiento rechazan con un error.
+        self._nivel_razonamiento = nivel_razonamiento
+
     @property
     def nombre(self) -> str:
         return "gemini"
@@ -58,7 +72,13 @@ class ProveedorGemini(ProveedorHTTP):
         if solicitud.temperatura is not None:
             configuracion["temperature"] = solicitud.temperatura
         if solicitud.max_tokens is not None:
+            # Incluye los tokens de razonamiento: con un nivel alto pueden agotar el
+            # máximo y dejar la respuesta vacía (finishReason MAX_TOKENS).
             configuracion["maxOutputTokens"] = solicitud.max_tokens
+        if self._nivel_razonamiento is not None:
+            configuracion["thinkingConfig"] = {"thinkingLevel": self._nivel_razonamiento}
+        if solicitud.respuesta_json:
+            configuracion["responseMimeType"] = "application/json"
         if configuracion:
             cuerpo["generationConfig"] = configuracion
         return cuerpo
@@ -66,10 +86,10 @@ class ProveedorGemini(ProveedorHTTP):
     def _error_de_estado(self, respuesta: httpx.Response) -> ErrorProveedor:
         estado = respuesta.status_code
         if codigos_de_error(respuesta) & _CODIGOS_DE_CUOTA:
-            return CuotaAgotada(
+            return self._con_estado(CuotaAgotada(
                 f"El proveedor {self.nombre} informó límite de uso (estado HTTP {estado}).",
                 proveedor=self.nombre,
-            )
+            ), estado)
         # Casos revisados que quedan en el mapeo general:
         # - 400 FAILED_PRECONDITION (nivel gratuito no disponible en la región o
         #   facturación sin habilitar): es un problema de la cuenta, no de cuota, y no
@@ -77,7 +97,7 @@ class ProveedorGemini(ProveedorHTTP):
         # - 403 PERMISSION_DENIED: la clave no tiene acceso. La cuota agotada llega
         #   siempre como 429, así que el 403 queda como ErrorNoRecuperable.
         # - 504 DEADLINE_EXCEEDED: es un 5xx, queda como ErrorTemporal.
-        return error_por_estado(estado, self.nombre)
+        return self._con_estado(error_por_estado(estado, self.nombre), estado)
 
     def _interpretar(self, datos: dict[str, Any]) -> RespuestaLLM:
         # Si el filtro actúa sobre el prompt, no hay candidatos y el motivo viene en
@@ -128,9 +148,9 @@ class ProveedorGemini(ProveedorHTTP):
         )
 
     def _error_de_bloqueo(self, motivo: object) -> ContenidoBloqueado:
-        # El motivo es un valor de enumeración del proveedor, no texto del usuario.
-        detalle = motivo if isinstance(motivo, str) else "sin detalle"
+        # No confiar en valores desconocidos recibidos desde un servicio remoto.
+        detalle = motivo if isinstance(motivo, str) and motivo in _FINES_POR_BLOQUEO else "sin detalle"
         return ContenidoBloqueado(
             f"El proveedor {self.nombre} bloqueó la solicitud por sus filtros ({detalle}).",
-            proveedor=self.nombre,
+            proveedor=self.nombre, causa="bloqueo", detalle=detalle,
         )

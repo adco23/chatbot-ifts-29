@@ -1,0 +1,50 @@
+.bloque {
+  margin-top: var(--espacio-2);
+  padding: var(--espacio-3);
+  border-left: 4px solid var(--color-azul);
+  border-radius: 8px;
+  background: var(--color-blanco);
+}
+
+.titulo {
+  margin: 0 0 var(--espacio-2);
+  font-weight: 700;
+}
+
+.datos {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px var(--espacio-3);
+  margin: 0 0 var(--espacio-3);
+  font-size: var(--texto-sm);
+}
+
+.datos dt {
+  color: var(--color-texto-suave);
+}
+
+.datos dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.boton {
+  display: inline-block;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--color-azul);
+  color: var(--color-blanco);
+  font-size: var(--texto-sm);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.boton:hover {
+  background: var(--color-azul-hover);
+}
+
+.nota {
+  margin: var(--espacio-2) 0 0;
+  font-size: var(--texto-xs);
+  color: var(--color-texto-suave);
+}

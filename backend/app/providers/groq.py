@@ -27,6 +27,20 @@ _CODIGOS_DE_CUOTA = frozenset({"rate_limit_exceeded"})
 class ProveedorGroq(ProveedorHTTP):
     """Genera texto con un modelo alojado en Groq."""
 
+    def __init__(
+        self,
+        api_key: str,
+        modelo: str,
+        timeout_segundos: float,
+        cliente: httpx.AsyncClient | None = None,
+        *,
+        esfuerzo_razonamiento: str | None = None,
+    ) -> None:
+        super().__init__(api_key, modelo, timeout_segundos, cliente)
+        # `reasoning_effort` (sólo GPT-OSS en Groq). None: no se envía, para poder
+        # configurar modelos sin razonamiento.
+        self._esfuerzo_razonamiento = esfuerzo_razonamiento
+
     @property
     def nombre(self) -> str:
         return "groq"
@@ -48,6 +62,12 @@ class ProveedorGroq(ProveedorHTTP):
         if solicitud.max_tokens is not None:
             # `max_tokens` está marcado como obsoleto en la referencia de la API.
             cuerpo["max_completion_tokens"] = solicitud.max_tokens
+        if self._esfuerzo_razonamiento is not None:
+            cuerpo["reasoning_effort"] = self._esfuerzo_razonamiento
+        if solicitud.respuesta_json:
+            # Modo JSON: exige que las instrucciones mencionen JSON. `reasoning_format`
+            # no se envía porque GPT-OSS no lo admite.
+            cuerpo["response_format"] = {"type": "json_object"}
         return cuerpo
 
     def _error_de_estado(self, respuesta: httpx.Response) -> ErrorProveedor:
@@ -58,19 +78,19 @@ class ProveedorGroq(ProveedorHTTP):
         # errores: es comportamiento observado de la API. Un 413 sin ese código queda
         # como ErrorNoRecuperable.
         if estado == 413 and codigos_de_error(respuesta) & _CODIGOS_DE_CUOTA:
-            return CuotaAgotada(
+            return self._con_estado(CuotaAgotada(
                 f"El proveedor {self.nombre} informó límite de uso (estado HTTP {estado}).",
                 proveedor=self.nombre,
-            )
+            ), estado)
         # 498 es un código propio de Groq: capacidad agotada del servicio («intentar
         # más tarde»). Aunque sea 4xx, es transitorio.
         if estado == 498:
-            return ErrorTemporal(
+            return self._con_estado(ErrorTemporal(
                 f"El proveedor {self.nombre} respondió con el estado HTTP {estado}.",
                 proveedor=self.nombre,
-            )
+            ), estado)
         # 401, 403, 404 y 422 quedan en el mapeo general como ErrorNoRecuperable.
-        return error_por_estado(estado, self.nombre)
+        return self._con_estado(error_por_estado(estado, self.nombre), estado)
 
     def _interpretar(self, datos: dict[str, Any]) -> RespuestaLLM:
         opciones = datos.get("choices")
@@ -84,7 +104,7 @@ class ProveedorGroq(ProveedorHTTP):
         if motivo == "content_filter":
             raise ContenidoBloqueado(
                 f"El proveedor {self.nombre} bloqueó la solicitud por sus filtros ({motivo}).",
-                proveedor=self.nombre,
+                proveedor=self.nombre, causa="bloqueo", detalle="content_filter",
             )
 
         mensaje = opcion.get("message")
